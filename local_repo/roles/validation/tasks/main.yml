@@ -18,8 +18,11 @@
     seconds: "{{ warning_wait_time_warning }}"
     prompt: "{{ warning_msg_local_repo }}"
 
-- name: Validate control plane OS
+- name: Validate control plane OS jag
   ansible.builtin.include_tasks: validate_cp_os.yml
+
+- name: Common prereqs
+  ansible.builtin.include_tasks: common_requirements.yml
 
 - name: Install prerequisites
   ansible.builtin.include_tasks: prerequisites_{{ ansible_distribution | lower }}.yml

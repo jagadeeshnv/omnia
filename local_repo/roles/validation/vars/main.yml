@@ -38,7 +38,7 @@ control_plane_os_ubuntu: "ubuntu"
 control_plane_os_fail_msg: "Failed. Control plane OS should be RHEL, Rocky or Ubuntu."
 root_user_name: "root"
 user_fail_msg: "Failed. Omnia playbooks should run as root user."
-warning_wait_time_warning: 15
+warning_wait_time_warning: 1
 warning_msg_local_repo: "[WARNING] Omnia will remove any package/software conflicting with the requirements."
 
 # Usage: validate_software_config_json.yml
