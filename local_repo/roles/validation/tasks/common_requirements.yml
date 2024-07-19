@@ -1,0 +1,20 @@
+---
+
+- name: Install ansible galaxy collection {{ community_general_collection }}
+  ansible.builtin.command: ansible-galaxy collection install -r "{{ role_path }}/files/val_coll_requirement.yml"
+  changed_when: true
+  register: community_general_collection
+  until: community_general_collection is not failed
+  retries: "{{ max_retries }}"
+
+- name: Install jq packages
+  ansible.builtin.package:
+    name: "{{ jq_package }}"
+    state: present
+
+- name: Install pip modules
+  ansible.builtin.pip:
+    name: "{{ python_package }}"
+  register: pip_module_install
+  until: pip_module_install is not failed
+  retries: "{{ max_retries }}"
