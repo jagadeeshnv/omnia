@@ -1,0 +1,32 @@
+- name: Override check flag this can be a config item
+  ansible.builtin.set_fact:
+    venv_check_override: false
+
+- name: Check if env set
+  ansible.builtin.debug:
+    msg: "ENV Collections path set - {{ lookup('ansible.builtin.env', 'ANSIBLE_COLLECTIONS_PATH') }}"
+
+- name: Check virtual ENV
+  ansible.builtin.set_fact:
+    virtualenv_active: "{{ lookup('ansible.builtin.env', 'VIRTUAL_ENV') }}" 
+
+- name: Warning - Omnia is not running in Virtual ENV
+  ansible.builtin.pause:
+    prompt: "[WARNING] Hey this is not in VENV - Are you sure :) ?"
+  when: not virtualenv_active and not venv_check_override
+
+- name: Ensure local cfg is appended with venev collections path
+  community.general.ini_file:
+    path: ansible.cfg
+    section: defaults
+    option: collections_path
+    value: "{{ virtualenv_active }}"
+  when: virtualenv_active
+
+- name: Remove venev collections path
+  community.general.ini_file:
+    path: ansible.cfg
+    section: defaults
+    option: collections_path
+    state: absent
+  when: not virtualenv_active
