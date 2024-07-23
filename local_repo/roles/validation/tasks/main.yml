@@ -13,13 +13,69 @@
 # limitations under the License.
 ---
 
-- name: Warning - Omnia will remove any package/software conflicting with the requirements
-  ansible.builtin.pause:
-    seconds: "{{ warning_wait_time_warning }}"
-    prompt: "{{ warning_msg_local_repo }}"
+# - name: activate virtual env
+#   ansible.builtin.pip:
+#     name: virtualenv
+#     virtualenv: /home/jag/omnia/venvy/my_py_venv_311
 
-- name: Validate control plane OS jag
-  ansible.builtin.include_tasks: validate_cp_os.yml
+# - name: shell activate
+#   ansible.builtin.shell:
+#     cmd: "source /home/jag/omnia/venvy/my_py_venv_311/bin/activate"
+
+# - name: command activate
+#   ansible.builtin.command: "source /home/jag/omnia/venvy/my_py_venv_311/bin/activate"
+#   ignore_errors: true
+
+# - name: raw activate
+#   ansible.builtin.raw: "source /home/jag/omnia/venvy/my_py_venv_311/bin/activate"
+#   ignore_errors: true
+
+# - name: Set environment variable
+#   environment:
+#     VARIABLE_NAME: variable_value
+
+# - name: Use the environment variable
+#   shell: "echo The value of VARIABLE_NAME is: $VARIABLE_NAME"
+
+# - name: shell env
+#   ansible.builtin.shell: "export ANSIBLE_COLLECTIONS_PATH=/home/jag/omnia/venvy/my_py_venv_311/within_shell:/home/jag/.ansible/collections:/usr/share/ansible/collections"
+
+# - ansible.builtin.debug:
+    # msg: "Am looking for {{ lookup('ansible.builtin.ini', 'collections_path', section='defaults', file='ansible.cfg') }}"
+
+#1 edit
+#2 use
+
+- name: Install collection with environment
+  ansible.builtin.command: ansible-galaxy collection install dellemc.openmanage --force -v
+  # environment:
+  #   ANSIBLE_COLLECTIONS_PATH: "/home/jag/omnia/venvy/my_py_venv_311/install_env:/home/jag/.ansible/collections:/usr/share/ansible/collections"
+
+- name: Retrieve basic details of all user accounts.
+  dellemc.openmanage.idrac_user_info:
+    idrac_ip: "100.96.24.131"
+    idrac_user: "root"
+    idrac_password: "Dell_123$"
+    validate_certs: false
+
+- name: Collect path
+  ansible.builtin.debug:
+    msg: "SECOND {{ lookup('ansible.builtin.env', 'ANSIBLE_COLLECTIONS_PATH') }}"
+
+- name: Test virtualenv
+  ansible.builtin.debug:
+    msg: "{{ lookup('ansible.builtin.env', 'VIRTUAL_ENV') }} is the VENV"  
+
+# - name: Test which virtualenv
+#   ansible.builtin.command: which python3
+
+# - name: Warning - Omnia will remove any package/software conflicting with the requirements
+#   ansible.builtin.pause:
+#     seconds: "{{ warning_wait_time_warning }}"
+#     prompt: "{{ warning_msg_local_repo }}"
+
+# - name: Validate control plane OS jag
+#   ansible.builtin.include_tasks: validate_cp_os.yml
 
 - name: Common prereqs
   ansible.builtin.include_tasks: common_requirements.yml

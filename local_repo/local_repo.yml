@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+- name: PREREQ
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  tasks:
+    - name: Ensure Ansible adjusted to VENV
+      ansible.builtin.include_tasks: ../ensure_ansible_env.yml
+
 
 - name: Local Repository Playbook
   hosts: localhost
@@ -23,6 +31,9 @@
     - configure_repos
     - parse_and_download
     - manifest
+  # environment:
+    # ANSIBLE_COLLECTIONS_PATH: "/home/jag/omnia/venvy/my_py_venv_311/local_ABC1"
+    # ANSIBLE_COLLECTIONS_SCAN_SYS_PATH: false
 
 - name: Display package status
   hosts: localhost

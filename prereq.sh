@@ -3,12 +3,14 @@
 [ -d /opt/omnia ] || mkdir /opt/omnia
 [ -d /var/log/omnia ] || mkdir /var/log/omnia
 
-default_py_version="3.9"
+python_version="3.11"
 validate_rocky_os="$(cat /etc/os-release | grep 'ID="rocky"' | wc -l)"
 validate_ubuntu_os="$(cat /etc/os-release | grep 'ID=ubuntu' | wc -l)"
 
 sys_py_version="$(python3 --version)"
 echo "System Python version: $sys_py_version"
+
+
 
 if [[ "$validate_rocky_os" == "1" ]];
 then
@@ -67,7 +69,7 @@ if [[ ! -z "$executable_path" && "$executable_path" = "/usr/bin/ansible" ]]; the
         sudo dnf remove ansible -y
         sudo dnf remove ansible-core -y
     fi
-
+    # TOKNOW
     if ! grep -qxF 'export PATH="/usr/local/bin:$PATH"' ~/.bashrc; then
         echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
     fi
