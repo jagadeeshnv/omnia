@@ -2,8 +2,13 @@
 
 ansible_version="9.5.1"
 python_version="3.11"
+py_major_version="3"
+py_minor_version="11"
 venv_py=python$python_version
 os_release_data="/etc/os-release"
+# venv_location=/opt/omnia/venv
+venv_location=~/omnia_venv
+# venv_location=/home/jag/omnia/venvy/py39venv
 
 ALLOWED_UBUNTU_VERSIONS=("20.04" "22.04")
 ALLOWED_RHEL_VERSIONS=("8.4" "8.5", "9.5")
@@ -60,9 +65,29 @@ check_rhel() {
 check_rocky() {
     if is_version_allowed "$OS_VERSION" "${ALLOWED_ROCKY_VERSIONS[@]}"; then
         echo "Rocky Linux $OS_VERSION is an allowed version."
+        dnf install epel-release -y
     else
         echo "Rocky Linux $OS_VERSION is not an allowed version."
         exit 1
+    fi
+}
+
+get_installed_ansible_version() {
+    $venv_py -m pip show ansible 2>/dev/null | grep Version | awk '{print $2}'
+}
+
+install_ansible() {
+    # TOTHINK Will it replace the collections installed?
+    echo "Installing Ansible $ansible_version..."
+    $venv_py -m pip install ansible=="$ansible_version" #--force-reinstall or --ignore-installed is not required
+}
+
+disable_selinux() {
+    selinux_count="$(grep "^SELINUX=disabled" /etc/selinux/config | wc -l)"
+    if [[ $selinux_count == 0 ]]; then
+        echo "DISABLING SELINUX:"
+        sed -i 's/^SELINUX=.*/SELINUX=disabled/g' /etc/selinux/config
+        echo "SELinux is disabled. Reboot system to notice the change in status before executing playbooks in control plane!!"
     fi
 }
 
@@ -78,45 +103,12 @@ else
     echo "Unsupported OS: $OS_ID"
     exit 1
 fi
-# exit 1
 
-get_installed_ansible_version() {
-    $venv_py -m pip show ansible 2>/dev/null | grep Version | awk '{print $2}'
-}
-
-install_ansible() {
-    echo "Installing Ansible $ansible_version..."
-    $venv_py -m pip install ansible=="$ansible_version" #--force-reinstall or --ignore-installed is not required
-}
-
-os_id=$(awk -F= '$1=="ID" { print $2 ;}' $os_release_data | tr -d '"')
-echo $os_id
-
-if [[ $os_id = @(ubuntu-server|rhel|rocky) ]]; then
-    echo "Supported OS"
-else
-    echo "Unsupported OS"
-    exit 1
-fi
-
-os_version=$(awk -F= '$1=="VERSION_ID" { print $2 ;}' $os_release_data | tr -d '"')
-echo $os_version
-#TODO - supported versions might have a patch release var
-if [[ $os_version = @(9.5|22.04|20.04) ]]; then
-    echo "Supported OS version"
-else
-    echo "Unsupported OS version"
-    #TODO
-fi
-
-venv_location=/opt/omnia/venv
-
-[ -d /opt/omnia ] || mkdir $venv_location
+[ -d $venv_location ] || mkdir $venv_location
 [ -d /var/log/omnia ] || mkdir /var/log/omnia
 
-
 if command -v $venv_py >/dev/null 2>&1; then
-    echo "Python $python_version is installed"
+    echo "Python $python_version is already installed"
 else
     req_py_packages="python$python_version python$python_version-pip python$python_version-devel"
     echo "Python $python_version is not installed"
@@ -131,10 +123,13 @@ else
         fi
         apt update # THIS will take time
         apt install $req_py_packages -y
-    elif [[ "$os_id" == "rocky" ]]; then
-        dnf install epel-release $req_py_packages-y
+        apt install git git-lfs -y
+        git lfs pull
     else
         dnf install $req_py_packages -y
+        dnf install git-lfs -y
+        git lfs pull
+        disable_selinux
     fi
 fi
 
@@ -143,15 +138,59 @@ if command -v $venv_py >/dev/null 2>&1; then
 else
     echo "$venv_py could not be installed !!"
     exit 1
+fi
 
-if [ -z "${VIRTUAL_ENV:-}" ]; then
-    echo "Virtual environment not activated"
-    python$python_version -m venv $venv_location --prompt OMNIA
+# if [ -z "${VIRTUAL_ENV:-}" ]; then
+#     echo "Virtual environment not activated"
+#     python$python_version -m venv $venv_location --prompt OMNIA
+#     source $venv_location/bin/activate
+# fi
+
+# Check if activated venv location equal to the venv_location
+if [ "$VIRTUAL_ENV" != "$venv_location" ]; then
+    # Either no venv not activated or the desired location
+    echo "Virtual environment not this"
+    # Create the venv path if it doesn't exist
+    if [ ! -f "$venv_location/bin/activate" ]; then
+       $venv_py -m venv $venv_location --prompt OMNIA
+    fi
+    # activate the venv
     source $venv_location/bin/activate
+    
+    if [ "$VIRTUAL_ENV" == "$venv_location" ]; then
+        echo "Virtual environment activated successfully."
+    else
+        echo "Failed to activate virtual environment."
+        exit 1
+    fi  
 fi
 
 echo "venv activated in $VIRTUAL_ENV"
+
+# Function to check Python major and minor version
+check_python_version_venv() {
+    # Extract Python version from the virtual environment
+    local venv_py_version=$(python --version 2>&1 | awk '{print $2}')
+    
+    # Extract major and minor versions
+    local venv_major_version=$(echo "$venv_py_version" | cut -d '.' -f 1)
+    local venv_minor_version=$(echo "$venv_py_version" | cut -d '.' -f 2)
+    
+    # Compare major and minor versions
+    if [ "$venv_major_version" == "$py_major_version" ] && [ "$venv_minor_version" == "$py_minor_version" ]; then
+        echo "Python version $venv_py_version matches the required version $py_major_version.$py_minor_version."
+    else
+        echo "Python version $venv_py_version does not match the required version $py_major_version.$py_minor_version."
+        exit 1
+    fi
+}
+
+check_python_version_venv
+
+echo "Virtual environment is active with the correct Python major and minor version."
+
 # Upgrade pip
+# TOTHINK: activated venv has both python and python3.11 execs so $venv_py is needed?
 $venv_py -m pip install --upgrade pip
 
 INSTALLED_VERSION=$(get_installed_ansible_version)
@@ -162,13 +201,3 @@ else
     echo "Ansible $ansible_version is not installed."
     install_ansible
 fi
-
-# exit 1
-
-# check anisble exists
-# check version
-#
-# check ansible within venv
-#
-# python$python_version -m ensurepip --upgrade
-# check ansible installed within venv
