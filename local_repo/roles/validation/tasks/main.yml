@@ -46,17 +46,29 @@
 #1 edit
 #2 use
 
-- name: Install collection with environment
+
+
+- name: Install dellemc.openmanage with environment
   ansible.builtin.command: ansible-galaxy collection install dellemc.openmanage --force -v
   # environment:
   #   ANSIBLE_COLLECTIONS_PATH: "/home/jag/omnia/venvy/my_py_venv_311/install_env:/home/jag/.ansible/collections:/usr/share/ansible/collections"
 
-- name: Retrieve basic details of all user accounts.
-  dellemc.openmanage.idrac_user_info:
-    idrac_ip: "100.96.24.131"
-    idrac_user: "root"
-    idrac_password: "Dell_123$"
-    validate_certs: false
+- name: Install my omniadummy collection
+  ansible.builtin.command: ansible-galaxy collection install /home/jag/omnia/forked_omnia/local_repo/omnia/omnia-dummy-1.0.0.tar.gz --force -v
+
+- name: Common prereqs
+  ansible.builtin.import_tasks: add_pbook.yml
+
+# - name: Run the dummy module
+#   omnia.dummy.mymodule:
+#     param1: "Will see this from roles/validation/tasks/main.yml"
+
+# - name: Retrieve basic details of all user accounts.
+#   dellemc.openmanage.idrac_user_info:
+#     idrac_ip: "100.96.24.131"
+#     idrac_user: "root"
+#     idrac_password: "Dell_123$"
+#     validate_certs: false
 
 - name: Collect path
   ansible.builtin.debug:

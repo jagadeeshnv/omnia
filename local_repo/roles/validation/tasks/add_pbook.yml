@@ -1,0 +1,10 @@
+- name: Run the dummy module
+  omnia.dummy.mymodule:
+    param1: "Will see this from roles/validation/tasks/main.yml"
+
+- name: Retrieve basic details of all user accounts.
+  dellemc.openmanage.idrac_user_info:
+    idrac_ip: "100.96.24.131"
+    idrac_user: "root"
+    idrac_password: "Dell_123$"
+    validate_certs: false

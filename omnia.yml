@@ -13,6 +13,9 @@
 # limitations under the License.
 ---
 
+- name: Ensure Ansible adjusted to VENV
+  ansible.builtin.include_tasks: ensure_ansible_env.yml
+
 - name: Update Inventory with ansible_host information
   ansible.builtin.import_playbook: utils/servicetag_host_mapping.yml
   when: not ( update_inventory_executed | default(false) | bool )

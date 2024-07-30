@@ -6,8 +6,8 @@ py_major_version="3"
 py_minor_version="11"
 venv_py=python$python_version
 os_release_data="/etc/os-release"
-# venv_location=/opt/omnia/venv
-venv_location=~/omnia_venv
+venv_location=/opt/omniavenv_1.7
+# venv_location=~/omnia_venv
 # venv_location=/home/jag/omnia/venvy/py39venv
 
 ALLOWED_UBUNTU_VERSIONS=("20.04" "22.04")
@@ -113,7 +113,8 @@ else
     req_py_packages="python$python_version python$python_version-pip python$python_version-devel"
     echo "Python $python_version is not installed"
     echo "$req_py_packages will be installed"
-    if [[ "$os_id" == "ubuntu-server" ]]; then
+    if [[ "$os_id" == "ubuntu"* ]]; then
+        echo "Ubuntu os found $os_id"
         if [[ "$os_version" == "22.04" ]]; then
             echo "deb [trusted=yes] http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main" > /etc/apt/sources.list.d/deadsnakes-ppa.list
         elif [[ "$os_version" == "20.04" ]]; then
@@ -126,6 +127,7 @@ else
         apt install git git-lfs -y
         git lfs pull
     else
+        echo "Non Ubuntu os found $os_id"
         dnf install $req_py_packages -y
         dnf install git-lfs -y
         git lfs pull

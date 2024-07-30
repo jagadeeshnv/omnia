@@ -10,8 +10,6 @@ validate_ubuntu_os="$(cat /etc/os-release | grep 'ID=ubuntu' | wc -l)"
 sys_py_version="$(python3 --version)"
 echo "System Python version: $sys_py_version"
 
-
-
 if [[ "$validate_rocky_os" == "1" ]];
 then
  echo "------------------------"
