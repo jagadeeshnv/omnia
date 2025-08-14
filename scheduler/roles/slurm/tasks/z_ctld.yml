@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Slurm dict ops
-  ansible.builtin.set_fact:
-    slurm_conf_dict: "{{ __slurm_default_config | ansible.builtin.combine(slurm_config | default({})) }}"
-    cgroup_conf_dict: "{{ __cgroup_default_config | ansible.builtin.combine(cgroup | default({})) }}"
-    slurm_dbd_conf_dict: "{{ __slurm_dbd_default_config | ansible.builtin.combine(slurm_dbd_config | default({})) }}"
+# TODO: munge needs logic tweak to take key from a shared location
+
+- name: Fresh cluster - Include common tasks
+  ansible.builtin.include_tasks: common.yml
 
 - name: Append share path if NFS
   ansible.builtin.set_fact:
@@ -31,6 +30,11 @@
     mode: "{{ common_mode }}"
   when: (slurm_installation_type == nfs_share_slurm)
   run_once: true
+
+- name: Set nfs flow
+  ansible.builtin.set_fact:
+    installroot: "{{ slurm_share_prefix }}{{ ansible_architecture }}/"
+  when: (slurm_installation_type == nfs_share_slurm)
 
 - name: Ensure Slurm conf share dir
   ansible.builtin.file:
@@ -63,12 +67,7 @@
     line: "SlurmctldHost={{ ansible_nodename | split('.') | first }}"
     insertafter: '^ClusterName=*'
 
-- pause:
-
-- name: Set nfs flow
-  ansible.builtin.set_fact:
-    installroot: "{{ slurm_share_prefix }}{{ ansible_architecture }}"
-  when: (slurm_installation_type == nfs_share_slurm)
+# - pause:
 
 - name: Create architecture directories
   ansible.builtin.file:
@@ -79,15 +78,17 @@
     mode: "{{ common_mode }}"
   when: (slurm_installation_type == nfs_share_slurm)
 
+# TODO: To read packages from the software config json based on role name ex: slurm_control_node
+
 - name: Install slurm packages
   ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} slurm-slurmctld" # noqa: command-instead-of-shell
   become: true
   failed_when: false # WARNING failure in the above task, install though error, repos also reset!!
   changed_when: false
 
-- pause:
+# - pause:
 
-- name: Create files - {{ item }}
+- name: Create files
   ansible.builtin.file:
     path: "{{ item }}"
     state: touch
