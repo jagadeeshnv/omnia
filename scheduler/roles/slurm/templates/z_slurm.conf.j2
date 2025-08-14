@@ -19,6 +19,8 @@ AccountingStorageType=accounting_storage/slurmdbd
 
 # COMPUTE NODES
 NodeName=DEFAULT State=UNKNOWN
+NodeName=localhost
 
 # PARTITION INFO
 PartitionName=DEFAULT Nodes=ALL Default=YES MaxTime=INFINITE State=UP
+PartitionName={{ slurm_partition_name }} Nodes=localhost MaxTime=INFINITE State=UP
