@@ -19,16 +19,20 @@
 
 
 - name: Install Slurm
-  hosts: slurm_control_node
+  hosts: slurm_control_node, slurm_node
   any_errors_fatal: true
   vars:
     share_path: "/new_slurm_share"
     slurm_installation_type: "nfs_share"
     restart_slurm_services: true
-  # roles:
-    # - role: slurm
-  tasks:
-    - name: Install slurm
-      ansible.builtin.include_role:
-        name: slurm
-        tasks_from: z_ctld.yml
+  roles:
+    - role: slurm
+  # tasks:
+  #   - name: Install slurm
+  #     ansible.builtin.include_role:
+  #       name: slurm
+  #       tasks_from: z_ctld.yml
+  #   - name: Install slurmd
+  #     ansible.builtin.include_role:
+  #       name: slurm
+  #       tasks_from: z_cmpt.yml

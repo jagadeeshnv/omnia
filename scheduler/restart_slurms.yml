@@ -1,0 +1,65 @@
+- name: Install Slurm
+  hosts: slurm_control_node, slurm_node
+  handlers:
+    - name: Ensure munge
+      ansible.builtin.service:
+        name: munge
+        enabled: true
+        state: restarted
+  vars:
+    munge_key_dest: "/etc/munge/munge.key"
+  tasks:
+    - name: Reload slurmctld
+      ansible.builtin.systemd_service:
+        name: slurmctld
+        state: reloaded
+        daemon_reload: true
+        enabled: true
+      when: ('slurm_control_node' in group_names)
+      tags:
+        - rstrt
+        - ctld
+
+    - name: Restart slurmctld
+      ansible.builtin.systemd_service:
+        name: slurmctld
+        state: restarted
+      when: ('slurm_control_node' in group_names)
+      tags:
+        - rstrt
+        - ctld
+
+    - name: Reload slurmd
+      ansible.builtin.systemd_service:
+        name: slurmd
+        state: reloaded
+        daemon_reload: true
+        enabled: true
+      when: ('slurm_node' in group_names)
+      tags:
+        - rstrt
+        - wrkr
+
+    - name: Restart slurmd
+      ansible.builtin.systemd_service:
+        name: slurmd
+        state: restarted
+      when: ('slurm_node' in group_names)
+      tags:
+        - rstrt
+        - wrkr
+
+    - name: Distribute munge key to compute nodes
+      ansible.posix.synchronize:
+        src: "{{ munge_key_dest }}"
+        dest: "{{ munge_key_dest | dirname }}"
+        mode: pull
+        checksum: true
+      delegate_to: "{{ item }}"
+      with_items: "{{ ansible_play_hosts_all }}"
+      when: "'slurm_control_node' in group_names"
+      register: munge_reg
+      notify: Ensure munge
+      tags:
+        - munge
+
