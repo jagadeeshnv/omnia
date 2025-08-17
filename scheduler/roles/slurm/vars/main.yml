@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-ctld_list: []
-compute_list: []
-login_list: []
-dbd_list: []
-
 input_project_dir: "{{ hostvars['localhost']['input_project_dir'] }}"
 cluster_name: cluster # TODO: direct load vars omnia_config.yml
 slurm_uid: 6001

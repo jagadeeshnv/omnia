@@ -76,7 +76,7 @@
 - name: Add this slurm controller in conf
   ansible.builtin.lineinfile:
     path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    line: "SlurmctldHost={{ ansible_nodename | split('.') | first }}"
+    line: "SlurmctldHost={{ inventory_hostname_short }}"
     insertafter: '^ClusterName=*'
 
 # - pause:
@@ -203,7 +203,8 @@
 
 - name: Add the controller to list
   ansible.builtin.set_fact:
-    ctld_list: "{{ (ctld_list + [(ansible_nodename | split('.') | first)]) | unique | list }}"
+    ctld_list: "{{ (ctld_list + [inventory_hostname_short]) | unique | list }}"
+  run_once: true
 
 - pause:
 

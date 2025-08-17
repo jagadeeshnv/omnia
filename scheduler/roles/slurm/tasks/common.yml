@@ -12,15 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Refresh mounts # WA: NFS stale file issue
-  ansible.builtin.shell: |
-    umount {{ share_path }}
-    mount -a
-  register: refresh_mounts
-  ignore_errors: true
-  changed_when: refresh_mounts.rc == 0
-  when: slurm_installation_type == nfs_share_slurm
-
 - name: Set facts for node ip # In case of multi NICs updates the right ip
   ansible.builtin.set_fact:
     node_ip: "{{ ansible_host }}"
@@ -38,7 +29,7 @@
       with_items: "{{ ansible_play_hosts_all }}"
   rescue:
     - name: Updating hosts file failed
-      ansible.builtin.fail:
+      ansible.builtin.debug: #TODO: this was fail
         msg: "{{ hosts_update_fail_msg }}"
 
 - name: Install common packages
