@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+ctld_list: []
+compute_list: []
+login_list: []
+dbd_list: []
 slurm_db_port_default: 3306
 slurm_db_type_default: mariadb
 slurm_db_username_default: root
