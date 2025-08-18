@@ -1,5 +1,5 @@
-- name: Install Slurm
-  hosts: slurm_control_node, slurm_node
+- name: Utilities Slurm
+  hosts: slurm_control_node, slurm_node, login_node
   handlers:
     - name: Ensure munge
       ansible.builtin.service:
@@ -9,6 +9,13 @@
   vars:
     munge_key_dest: "/etc/munge/munge.key"
   tasks:
+    - name: Clean slurm
+      ansible.builtin.include_role:
+        name: slurm
+        tasks_from: cleanall.yml
+      tags:
+        - cln
+
     - name: Reload slurmctld
       ansible.builtin.systemd_service:
         name: slurmctld
@@ -62,4 +69,3 @@
       notify: Ensure munge
       tags:
         - munge
-

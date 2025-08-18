@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+- name: Check munge dir
+  ansible.builtin.file:
+    path: "{{ munge_key_dest | dirname }}"
+    state: directory
+    owner: "{{ munge_user }}"
+    group: "{{ munge_group }}"
+    mode: "{{ munge_dir_mode }}"
+
 - name: Include controller installation tasks
   ansible.builtin.include_tasks: z_ctld.yml
   when: '"slurm_control_node" in group_names'
@@ -19,3 +27,7 @@
 - name: Include compute installation tasks
   ansible.builtin.include_tasks: z_cmpt.yml
   when: '"slurm_node" in group_names'
+
+- name: Include login installation tasks
+  ansible.builtin.include_tasks: z_login.yml
+  when: '"login_node" in group_names'

@@ -17,16 +17,15 @@
   ansible.builtin.import_playbook: ../utils/include_input_dir.yml
   when: not ( hostvars['127.0.0.1']['project_dir_status'] | default(false) | bool )
 
-
 - name: Install Slurm
-  hosts: slurm_control_node, slurm_node
+  hosts: slurm_control_node, slurm_node, login_node
   any_errors_fatal: true
-  vars:
-    share_path: "/new_slurm_share"
-    slurm_installation_type: "nfs_share"
-    restart_slurm_services: true
   roles:
     - role: slurm
+      vars:
+        share_path: "/new_slurm_share"
+        slurm_installation_type: "nfs_share"
+        restart_slurm_services: true
   # tasks:
   #   - name: Install slurm
   #     ansible.builtin.include_role:
