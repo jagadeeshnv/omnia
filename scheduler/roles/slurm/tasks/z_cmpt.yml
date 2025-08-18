@@ -12,127 +12,77 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-
 - name: Fresh cluster - Include common tasks
   ansible.builtin.include_tasks: common.yml
 
-- name: Append share path if NFS
-  ansible.builtin.set_fact:
-    slurm_share_prefix: "{{ share_path + '/' + slurm_dir_name + cluster_name + '/' if (slurm_installation_type == nfs_share_slurm) else '/' }}"
-
-- name: Create the slurm directory on share
-  ansible.builtin.file:
-    path: "{{ share_path }}/{{ slurm_dir_name }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "{{ common_mode }}"
+- name: NFS slurm conf edit ops !!
   when: (slurm_installation_type == nfs_share_slurm)
-  # run_once: true
+  block:
+    - name: Check if slurm.conf exists
+      ansible.builtin.stat:
+        path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+      register: slurm_conf_path
 
-- name: Set nfs flow
-  ansible.builtin.set_fact:
-    installroot: "{{ slurm_share_prefix }}{{ ansible_architecture }}/"
-  when: (slurm_installation_type == nfs_share_slurm)
+    - name: Fail if slurm.conf does not exist
+      ansible.builtin.fail:
+        msg: "NFS share slurm conf missing. Please ensure the slurm.conf is created at {{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+      when: not slurm_conf_path.stat.exists
 
-- name: Ensure Slurm conf share dir
-  ansible.builtin.file:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}"
-    state: directory
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ common_mode }}"
+    - name: Add the compute to conf
+      ansible.builtin.lineinfile:
+        path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+        state: present
+        line:
+          "NodeName={{ inventory_hostname_short }} CPUs={{ ansible_processor_nproc }} Sockets={{ ansible_processor_count }} CoresPerSocket={{ ansible_processor_cores
+          }} ThreadsPerCore={{ ansible_processor_threads_per_core }}"
+        insertafter: "^NodeName="
+        owner: "{{ root_user }}"
+        group: "{{ root_group }}"
+        mode: "{{ conf_file_mode }}"
 
-- name: Check if slurm.conf exists
-  ansible.builtin.stat:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-  register: p
+    - name: Add controller list in conf if not present
+      ansible.builtin.lineinfile:
+        path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+        line: "SlurmctldHost={{ item }}"
+        insertafter: "^ClusterName=*"
+      loop: "{{ ctld_list }}"
 
-- name: Create slurm.conf
-  ansible.builtin.template:
-    src: "z_slurm.conf.j2"
-    dest: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
-  when: not p.stat.exists
-  # run_once: true
+    - name: Remove the localhost line
+      ansible.builtin.lineinfile:
+        path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+        line: "NodeName=localhost"
+        state: absent
 
-- name: Create cgroup.conf
-  ansible.builtin.template:
-    src: "cgroup.conf.j2"
-    dest: "{{ item }}"
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
-  loop:
-    - "{{ slurm_share_prefix }}{{ slurm_config_dir }}/cgroup.conf"
-  notify:
-    - Restart slurmd
+    - name: Read slurm.conf file
+      ansible.builtin.slurp:
+        src: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+      register: slurm_conf
 
-- name: Add the compute to conf
-  ansible.builtin.lineinfile:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    state: present
-    line: "NodeName={{ inventory_hostname_short }}
-     CPUs={{ ansible_processor_nproc }} Sockets={{ ansible_processor_count }}
-     CoresPerSocket={{ ansible_processor_cores }}
-     ThreadsPerCore={{ ansible_processor_threads_per_core }}"
-    insertafter: "^NodeName="
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
+    - name: Extract Nodes from {{ slurm_partition_name }}
+      ansible.builtin.set_fact:
+        specific_nodes:
+          "{{ (slurm_conf.content | b64decode | split('\n') | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*') | map('regex_replace','^PartitionName='+
+          slurm_partition_name +'\\s+.*Nodes=(\\S+).*', '\\1')) }}"
 
-- name: Add controller list in conf if not present
-  ansible.builtin.lineinfile:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    line: "SlurmctldHost={{ item }}"
-    insertafter: '^ClusterName=*'
-  loop: "{{ ctld_list }}"
+    - name: Create worker nodes list
+      ansible.builtin.set_fact:
+        worker_nodes:
+          "{{ ((specific_nodes[0].split(',') | reject('equalto', 'localhost') | list) + [inventory_hostname_short]) | list | unique | sort | join(',')
+          }}"
+      when: specific_nodes | length > 0
 
-- name: Remove the localhost line
-  ansible.builtin.lineinfile:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    line: "NodeName=localhost"
-    state: absent
+    - name: Log worker nodes
+      ansible.builtin.debug:
+        var: worker_nodes
+      when: specific_nodes | length > 0
 
-- ansible.builtin.debug:
-    var: ctld_list
-
-- name: Read slurm.conf file
-  ansible.builtin.slurp:
-    src: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-  register: slurm_conf
-
-- name: Extract Nodes from {{ slurm_partition_name }}
-  ansible.builtin.set_fact:
-    specific_nodes: "{{ (slurm_conf.content | b64decode | split('\n') | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*') | map('regex_replace','^PartitionName='+ slurm_partition_name +'\\s+.*Nodes=(\\S+).*', '\\1')) }}"
-
-- name: Create worker nodes list
-  ansible.builtin.set_fact:
-    worker_nodes: "{{ ((specific_nodes[0].split(',') | reject('equalto', 'localhost') | list)
-     + [inventory_hostname_short]) | list | unique | sort | join(',') }}"
-  when: specific_nodes | length > 0
-
-- ansible.builtin.debug:
-    var: worker_nodes
-
-- name: Add the partition
-  ansible.builtin.lineinfile:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    state: present
-    line: "PartitionName={{ slurm_partition_name }} Nodes={{ worker_nodes }} MaxTime=INFINITE State=UP"
-    regexp: "^PartitionName={{ slurm_partition_name }} "
-  when: worker_nodes is defined
-
-- name: Create architecture directories
-  ansible.builtin.file:
-    path: "{{ installroot }}"
-    state: directory
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ common_mode }}"
-  when: (slurm_installation_type == nfs_share_slurm)
+    - name: Add the partition
+      ansible.builtin.lineinfile:
+        path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
+        state: present
+        line: "PartitionName={{ slurm_partition_name }} Nodes={{ worker_nodes }} MaxTime=INFINITE State=UP"
+        regexp: "^PartitionName={{ slurm_partition_name }} "
+      when: worker_nodes is defined
 
 - name: Install slurm packages
   ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} slurm-slurmd" # noqa: command-instead-of-shell
@@ -171,7 +121,7 @@
     mode: preserve
   when: (slurm_installation_type == nfs_share_slurm) and _force_install_nfs
 
-- name: Enable the service
+- name: Daemon reload
   ansible.builtin.systemd_service:
     daemon_reload: true
 
@@ -217,12 +167,12 @@
   community.general.ini_file:
     path: "/etc/sysconfig/slurmd"
     option: "LD_LIBRARY_PATH"
+    state: "{{ 'present' if (slurm_installation_type == nfs_share_slurm) else 'absent' }}"
     value: "{{ installroot }}usr/lib64"
     no_extra_spaces: true
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
-  when: (slurm_installation_type == nfs_share_slurm) and _force_install_nfs
   notify:
     - Reload slurmd
     - Restart slurmd
@@ -240,63 +190,7 @@
     group: "{{ slurm_user_group }}"
     mode: "{{ common_mode }}"
   loop:
-    # - "{{ slurm_share_prefix }}{{ slurm_config_dir }}"
     - "{{ slurm_conf_dict['SlurmdSpoolDir'] }}"
 
-- name: Remove the local slurm conf # !!?? this is taking prirority
-  ansible.builtin.file:
-    path: "/{{ slurm_config_dir }}/slurm.conf"
-    state: absent
-
-- name: Echo path env
-  ansible.builtin.shell: echo $PATH # noqa: command-instead-of-shell
-  changed_when: false
-  register: path_out
-
-- name: Get path env
-  ansible.builtin.set_fact:
-    env_path_list: "{{ (path_out.stdout | split(':') | reject('search', 'slurm') | list) }}"
-    env_slurm_conf: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    ld_library_path: "/usr/lib64"
-
-- name: Clean the environment
-  community.general.ini_file:
-    path: "{{ sys_env_path }}"
-    option: "{{ item[0] }}"
-    value: "{{ item[1] }}"
-    state: "{{ 'present' if item[1] else 'absent' }}"
-    no_extra_spaces: true
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
-  loop:
-    - "{{ ['PATH', false] }}"
-    - "{{ ['SLURM_CONF', env_slurm_conf] }}"
-    - "{{ ['LD_LIBRARY_PATH', false] }}"
-
-- name: Handle NFS envs
-  when: (slurm_installation_type == nfs_share_slurm) and _force_install_nfs
-  block:
-    - name: Set env special paths
-      ansible.builtin.set_fact:
-        env_path_list: "{{ (env_path_list + [installroot.rstrip('/') + '/usr/bin'] + [installroot.rstrip('/') + '/usr/sbin']) | join(':') }}"
-        ld_library_path: "/usr/lib64:{{ installroot }}usr/lib64"
-        env_slurm_conf: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-
-    - name: Set env variable
-      community.general.ini_file:
-        path: "{{ sys_env_path }}"
-        option: "{{ item[0] }}"
-        value: "{{ item[1] }}"
-        no_extra_spaces: true
-        owner: "{{ root_user }}"
-        group: "{{ root_group }}"
-        mode: "{{ conf_file_mode }}"
-      loop:
-        - "{{ ['PATH', env_path_list] }}"
-        - "{{ ['SLURM_CONF', env_slurm_conf] }}"
-        - "{{ ['LD_LIBRARY_PATH', ld_library_path] }}"
-
-- name: Enable etc enviroment
-  ansible.builtin.shell: source {{ sys_env_path }} # noqa: command-instead-of-shell
-  changed_when: false
+- name: Set the common env vars
+  ansible.builtin.include_tasks: _env_set.yml

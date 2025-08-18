@@ -17,11 +17,7 @@
 - name: Fresh cluster - Include common tasks
   ansible.builtin.include_tasks: common.yml
 
-- name: Append share path if NFS
-  ansible.builtin.set_fact:
-    slurm_share_prefix: "{{ share_path + '/' + slurm_dir_name + cluster_name + '/' if (slurm_installation_type == nfs_share_slurm) else '/' }}"
-
-- name: Ensure directories for slurm ops
+- name: Ensure local directories for slurm ctl save ops
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -31,35 +27,12 @@
   loop:
     - "{{ slurm_conf_dict['StateSaveLocation'] }}"
 
-- name: Create the slurm directory on share
-  ansible.builtin.file:
-    path: "{{ share_path }}/{{ slurm_dir_name }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "{{ common_mode }}"
-  when: (slurm_installation_type == nfs_share_slurm)
-  # run_once: true
-
-- name: Set nfs flow
-  ansible.builtin.set_fact:
-    installroot: "{{ slurm_share_prefix }}{{ ansible_architecture }}/"
-  when: (slurm_installation_type == nfs_share_slurm)
-
-- name: Ensure Slurm conf share dir
-  ansible.builtin.file:
-    path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}"
-    state: directory
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ common_mode }}"
-
 - name: Check if slurm.conf exists
   ansible.builtin.stat:
     path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
   register: p
 
-- name: Create slurm.conf
+- name: Create slurm.conf for ctld only
   ansible.builtin.template:
     src: "z_slurm.conf.j2"
     dest: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
@@ -71,7 +44,7 @@
   notify:
     - Restart slurmctld
 
-- name: Create cgroup.conf
+- name: Create cgroup.conf for ctld only
   ansible.builtin.template:
     src: "cgroup.conf.j2"
     dest: "{{ item }}"
@@ -89,17 +62,6 @@
     line: "SlurmctldHost={{ inventory_hostname_short }}"
     insertafter: '^ClusterName=*'
 
-# - pause:
-
-- name: Create architecture directories
-  ansible.builtin.file:
-    path: "{{ installroot }}"
-    state: directory
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ common_mode }}"
-  when: (slurm_installation_type == nfs_share_slurm)
-
 # TODO: To read packages from the software config json based on role name ex: slurm_control_node
 
 - name: Install slurm packages
@@ -107,8 +69,6 @@
   become: true
   failed_when: false # WARNING failure in the above task, install though error, repos also reset!!
   changed_when: false
-
-# - pause:
 
 - name: Create files
   ansible.builtin.file:
@@ -184,29 +144,16 @@
     - Reload slurmctld
     - Restart slurmctld
 
-- name: Remove environment for configless case
-  community.general.ini_file:
-    path: "{{ ctld_service_path }}"
-    section: Service
-    option: Environment
-    state: absent
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
-  notify:
-    - Reload slurmctld
-    - Restart slurmctld
-
 - name: Set ctld specific env file
   community.general.ini_file:
     path: "/etc/sysconfig/slurmctld"
     option: "LD_LIBRARY_PATH"
+    state: "{{ 'present' if (slurm_installation_type == nfs_share_slurm) else 'absent' }}"
     value: "{{ installroot }}usr/lib64"
     no_extra_spaces: true
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
-  when: (slurm_installation_type == nfs_share_slurm) and _force_install_nfs
   notify:
     - Reload slurmctld
     - Restart slurmctld
@@ -216,61 +163,5 @@
     ctld_list: "{{ (ctld_list + [inventory_hostname_short]) | unique | list }}"
   run_once: true
 
-- name: Remove the local slurm conf
-  ansible.builtin.file:
-    path: "/{{ slurm_config_dir }}/slurm.conf"
-    state: absent
-  when: slurm_installation_type == nfs_share_slurm
-
-- name: Get path env
-  ansible.builtin.shell: echo $PATH # noqa: command-instead-of-shell
-  changed_when: false
-  register: path_out
-
-- name: Get path env
-  ansible.builtin.set_fact:
-    env_path_list: "{{ (path_out.stdout | split(':') | reject('search', 'slurm') | list) }}"
-    env_slurm_conf: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-    ld_library_path: "/usr/lib64"
-
-- name: Clean the environment
-  community.general.ini_file:
-    path: "{{ sys_env_path }}"
-    option: "{{ item[0] }}"
-    value: "{{ item[1] }}"
-    state: "{{ 'present' if item[1] else 'absent' }}"
-    no_extra_spaces: true
-    owner: "{{ root_user }}"
-    group: "{{ root_group }}"
-    mode: "{{ conf_file_mode }}"
-  loop:
-    - "{{ ['PATH', false] }}"
-    - "{{ ['SLURM_CONF', env_slurm_conf] }}"
-    - "{{ ['LD_LIBRARY_PATH', false] }}"
-
-- name: Handle NFS envs
-  when: (slurm_installation_type == nfs_share_slurm) and _force_install_nfs
-  block:
-    - name: Set env special paths
-      ansible.builtin.set_fact:
-        env_path_list: "{{ (env_path_list + [installroot.rstrip('/') + '/usr/bin'] + [installroot.rstrip('/') + '/usr/sbin']) | join(':') }}"
-        ld_library_path: "/usr/lib64:{{ installroot }}usr/lib64"
-        env_slurm_conf: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
-
-    - name: Set env variable
-      community.general.ini_file:
-        path: "{{ sys_env_path }}"
-        option: "{{ item[0] }}"
-        value: "{{ item[1] }}"
-        no_extra_spaces: true
-        owner: "{{ root_user }}"
-        group: "{{ root_group }}"
-        mode: "{{ conf_file_mode }}"
-      loop:
-        - "{{ ['PATH', env_path_list] }}"
-        - "{{ ['SLURM_CONF', env_slurm_conf] }}"
-        - "{{ ['LD_LIBRARY_PATH', ld_library_path] }}"
-
-- name: Enable etc enviroment
-  ansible.builtin.shell: source {{ sys_env_path }} # noqa: command-instead-of-shell
-  changed_when: false
+- name: Set the common env vars
+  ansible.builtin.include_tasks: _env_set.yml
