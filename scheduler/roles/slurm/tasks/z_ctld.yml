@@ -21,6 +21,16 @@
   ansible.builtin.set_fact:
     slurm_share_prefix: "{{ share_path + '/' + slurm_dir_name + cluster_name + '/' if (slurm_installation_type == nfs_share_slurm) else '/' }}"
 
+- name: Ensure directories for slurm ops
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ slurm_user }}"
+    group: "{{ slurm_user_group }}"
+    mode: "{{ common_mode }}"
+  loop:
+    - "{{ slurm_conf_dict['StateSaveLocation'] }}"
+
 - name: Create the slurm directory on share
   ansible.builtin.file:
     path: "{{ share_path }}/{{ slurm_dir_name }}"
@@ -205,8 +215,6 @@
   ansible.builtin.set_fact:
     ctld_list: "{{ (ctld_list + [inventory_hostname_short]) | unique | list }}"
   run_once: true
-
-- pause:
 
 - name: Remove the local slurm conf
   ansible.builtin.file:
