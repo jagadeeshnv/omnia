@@ -65,8 +65,7 @@
 # TODO: To read packages from the software config json based on role name ex: slurm_control_node
 
 - name: Install slurm packages
-  ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} slurm-slurmctld" # noqa: command-instead-of-shell
-  become: true
+  ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ slurm-slurmctld" # noqa: command-instead-of-shell
   failed_when: false # WARNING failure in the above task, install though error, repos also reset!!
   changed_when: false
 
