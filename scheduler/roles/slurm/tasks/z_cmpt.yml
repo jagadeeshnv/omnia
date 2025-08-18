@@ -84,9 +84,8 @@
         regexp: "^PartitionName={{ slurm_partition_name }} "
       when: worker_nodes is defined
 
-- name: Install slurm packages
-  ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} slurm-slurmd" # noqa: command-instead-of-shell
-  become: true
+- name: Install slurmd packages
+  ansible.builtin.shell: "dnf --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ install -y slurm-slurmd"
   failed_when: false # WARNING failure in the above task, install though error, repos also reset!!
   changed_when: false
 
