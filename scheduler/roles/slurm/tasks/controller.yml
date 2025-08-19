@@ -13,6 +13,11 @@
 # limitations under the License.
 ---
 # TODO: munge needs logic tweak to take key from a shared location
+- name: Prereq vars
+  ansible.builtin.include_tasks: _prereq.yml
+
+- name: Include firewall tasks
+  ansible.builtin.include_tasks: firewall.yml
 
 - name: Fresh cluster - Include common tasks
   ansible.builtin.include_tasks: common.yml
@@ -63,12 +68,8 @@
     insertafter: '^ClusterName=*'
 
 # TODO: To read packages from the software config json based on role name ex: slurm_control_node
-
-- name: Install slurm packages
-  ansible.builtin.command: >
-    "dnf install -y --installroot={{ installroot }}
-     --setopt=reposdir=/etc/yum.repos.d/
-      slurm-slurmctld"
+- name: Install slurm ctld packages
+  ansible.builtin.command: "dnf install -y --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ slurm-slurmctld"
   register: dnf_out
   failed_when: dnf_out.rc != 0
   changed_when: dnf_out.rc == 0
@@ -83,18 +84,6 @@
   loop:
     - "{{ slurm_conf_dict['SlurmctldLogFile'] }}"
     - "{{ slurm_conf_dict['SlurmctldPidFile'] }}"
-
-# Port Config
-- name: Enable SlurmctldPort
-  ansible.posix.firewalld:
-    port: "{{ item }}/tcp"
-    permanent: true
-    zone: public
-    state: enabled
-    immediate: true
-  loop:
-    - "{{ slurm_conf_dict['SlurmctldPort'] }}"
-    - "{{ slurm_conf_dict['SrunPortRange'] }}"
 
 #  if service installed locally - this following copy not required
 - name: Copy the slurctld service local for nfs
@@ -115,6 +104,7 @@
     name: slurmctld
     enabled: true
   register: ctld_service
+  no_log: true
 
 - name: Ctld service path
   ansible.builtin.set_fact:
