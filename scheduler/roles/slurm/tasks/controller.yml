@@ -34,7 +34,7 @@
 
 - name: Create slurm.conf for ctld only
   ansible.builtin.template:
-    src: "z_slurm.conf.j2"
+    src: "slurm.conf.j2"
     dest: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
