@@ -52,3 +52,4 @@
     name: munge
     enabled: true
     state: started
+  no_log: true
