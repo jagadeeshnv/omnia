@@ -28,7 +28,7 @@
       with_items: "{{ ansible_play_hosts_all }}"
   rescue:
     - name: Updating hosts file failed
-      ansible.builtin.debug: # TODO: this was fail
+      ansible.builtin.fail:
         msg: "{{ hosts_update_fail_msg }}"
 
 - name: Install common packages
@@ -36,9 +36,9 @@
     name: "{{ common_packages[ansible_os_family] }}"
     state: present
 
-# - name: Install utils packages
-#   ansible.builtin.include_tasks: install_utils_packages.yml
-#   when: utils_support is true
+- name: Install utils packages
+  ansible.builtin.include_tasks: install_utils_packages.yml
+  when: utils_support is true
 
 - name: Firewall service running
   ansible.builtin.systemd_service:
