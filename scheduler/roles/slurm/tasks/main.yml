@@ -21,13 +21,13 @@
     mode: "{{ munge_dir_mode }}"
 
 - name: Include controller installation tasks
-  ansible.builtin.include_tasks: z_ctld.yml
+  ansible.builtin.include_tasks: controller.yml
   when: '"slurm_control_node" in group_names'
 
 - name: Include compute installation tasks
-  ansible.builtin.include_tasks: z_cmpt.yml
+  ansible.builtin.include_tasks: compute.yml
   when: '"slurm_node" in group_names'
 
 - name: Include login installation tasks
-  ansible.builtin.include_tasks: z_login.yml
+  ansible.builtin.include_tasks: login.yml
   when: '"login_node" in group_names'
