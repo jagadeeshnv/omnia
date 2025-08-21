@@ -35,7 +35,7 @@
     mode: "{{ conf_file_mode }}"
   loop:
     - "{{ ['PATH', false] }}"
-    - "{{ ['SLURM_CONF', env_slurm_conf] }}"
+    - "{{ ['SLURM_CONF', false] }}"
     - "{{ ['LD_LIBRARY_PATH', false] }}"
 
 - name: Handle NFS envs

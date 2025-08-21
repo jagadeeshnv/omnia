@@ -31,19 +31,22 @@
 
 - debug:
     var: ctld_list
-- pause:
+# - pause:
 
 - name: Edit the conf
   ansible.builtin.include_tasks: _compute_conf.yml
   loop: "{{ ctld_list }}"
 
 - name: Install slurmd packages
-  ansible.builtin.command: >
-    "dnf --installroot={{ installroot }}
-     --setopt=reposdir=/etc/yum.repos.d/
-      install -y slurm-slurmd"
+  ansible.builtin.shell: "dnf --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ install -y slurm-slurmd"
   failed_when: false
   changed_when: false
+
+- name: Remove local slurm.conf
+  ansible.builtin.file:
+    path: "/{{ slurm_config_dir }}/slurm.conf"
+    state: absent
+    mode: "{{ slurm_mode }}"
 
 - name: Create files
   ansible.builtin.file:
@@ -108,7 +111,7 @@
     - Reload slurmd
     - Restart slurmd
 
-- name: Set ctld specific env file 
+- name: Set ctld specific env file
   community.general.ini_file:
     path: "/etc/sysconfig/slurmd" # TODO: if absent??
     option: "LD_LIBRARY_PATH"

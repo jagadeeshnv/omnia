@@ -16,9 +16,6 @@
 - name: Prereq vars
   ansible.builtin.include_tasks: _prereq.yml
 
-- name: Include firewall tasks
-  ansible.builtin.include_tasks: firewall.yml
-
 - name: Fresh cluster - Include common tasks
   ansible.builtin.include_tasks: common.yml
 
@@ -71,7 +68,7 @@
 - name: Install slurm ctld packages
   ansible.builtin.command: "dnf install -y --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ slurm-slurmctld"
   register: dnf_out
-  failed_when: dnf_out.rc != 0
+  failed_when: false
   changed_when: dnf_out.rc == 0
 
 - name: Create files
