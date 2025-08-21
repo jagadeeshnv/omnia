@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+# - pause:
+
 - name: Conf edit block
   delegate_to: "{{ item }}"
   block:
@@ -19,24 +21,6 @@
       ansible.builtin.slurp:
         src: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
       register: slurm_conf
-
-    - name: Extract Nodes from {{ slurm_partition_name }}
-      ansible.builtin.set_fact:
-        specific_nodes:
-          "{{ (slurm_conf.content | b64decode | split('\n') | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*') | map('regex_replace','^PartitionName='+
-          slurm_partition_name +'\\s+.*Nodes=(\\S+).*', '\\1')) }}"
-
-    - name: Create worker nodes list
-      ansible.builtin.set_fact:
-        worker_nodes:
-          "{{ ((specific_nodes[0].split(',') | reject('equalto', 'localhost') | list) + [inventory_hostname_short]) | list | unique | sort | join(',')
-          }}"
-      when: specific_nodes | length > 0
-
-    - name: Log worker nodes
-      ansible.builtin.debug:
-        var: worker_nodes
-      when: specific_nodes | length > 0
 
     - name: Remove the localhost line
       ansible.builtin.lineinfile:
@@ -58,6 +42,30 @@
         group: "{{ root_group }}"
         mode: "{{ conf_file_mode }}"
 
+# - pause:
+
+- name: Partition edit block
+  delegate_to: "{{ item }}"
+  when: '"slurm_node" in group_names'
+  block:
+    - name: Extract Nodes from {{ slurm_partition_name }}
+      ansible.builtin.set_fact:
+        specific_nodes:
+          "{{ (slurm_conf.content | b64decode | split('\n') | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*') | map('regex_replace','^PartitionName='+
+          slurm_partition_name +'\\s+.*Nodes=(\\S+).*', '\\1')) }}"
+
+    - name: Create worker nodes list
+      ansible.builtin.set_fact:
+        worker_nodes:
+          "{{ ((specific_nodes[0].split(',') | reject('equalto', 'localhost') | list) + [inventory_hostname_short]) | list | unique | sort | join(',')
+          }}"
+      when: specific_nodes | length > 0
+
+    - name: Log worker nodes
+      ansible.builtin.debug:
+        var: worker_nodes
+      when: specific_nodes | length > 0
+
     - name: Add the partition
       ansible.builtin.lineinfile:
         path: "{{ slurm_share_prefix }}{{ slurm_config_dir }}/slurm.conf"
@@ -65,3 +73,5 @@
         line: "PartitionName={{ slurm_partition_name }} Nodes={{ worker_nodes }} MaxTime=INFINITE State=UP"
         regexp: "^PartitionName={{ slurm_partition_name }} "
       when: worker_nodes is defined
+
+# - pause:

@@ -16,7 +16,8 @@
   block:
     - name: Assert Controllers hostname provided
       ansible.builtin.assert:
-        assert: ctld_list | length > 0
+        that:
+          - ctld_list | length > 0
         fail_msg: "Controller list is empty. Compute node in configless requires controllers. Please provide at least one controller."
         success_msg: "Controllers {{ ctld_list | join(',') }} are available for configless login"
 

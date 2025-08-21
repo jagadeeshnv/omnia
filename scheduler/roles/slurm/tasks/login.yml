@@ -26,9 +26,19 @@
   failed_when: false
   changed_when: false
 
+- name: Remove local slurm.conf
+  ansible.builtin.file:
+    path: "/{{ slurm_config_dir }}/slurm.conf"
+    state: absent
+    mode: "{{ slurm_mode }}"
+
 - name: Read the ctlds from the NFS conf
   ansible.builtin.include_tasks: _nfs_conf.yml
   when: (slurm_installation_type == nfs_share_slurm)
+
+- name: Edit the conf
+  ansible.builtin.include_tasks: _compute_conf.yml
+  loop: "{{ ctld_list }}"
 
 - name: Login node configless
   when: slurm_installation_type == configless_slurm

@@ -28,7 +28,6 @@
   ansible.posix.firewalld:
     port: "{{ slurm_conf_dict['SrunPortRange'] }}/tcp"
     permanent: true
-    zone: public
     state: "{{ firewall_state }}"
     immediate: true
 
@@ -36,7 +35,6 @@
   ansible.posix.firewalld:
     port: "{{ slurm_conf_dict['SlurmctldPort'] }}/tcp"
     permanent: true
-    zone: public
     state: "{{ firewall_state }}"
     immediate: true
   when: ("slurm_control_node" in group_names)
@@ -45,7 +43,6 @@
   ansible.posix.firewalld:
     port: "{{ slurm_conf_dict['SlurmdPort'] }}/tcp"
     permanent: true
-    zone: public
     state: "{{ firewall_state }}"
     immediate: true
   when: ("slurm_node" in group_names) or ("login_node" in group_names and slurm_installation_type == configless_slurm)
@@ -54,7 +51,7 @@
   ansible.posix.firewalld:
     port: "{{ slurm_dbd_port }}/tcp"
     permanent: true
-    zone: public
+    # zone: public
     state: enabled
     immediate: true
   when: ("slurm_dbd" in group_names)
