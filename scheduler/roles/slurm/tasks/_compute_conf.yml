@@ -23,6 +23,12 @@
   notify:
     - Restart munge
 
+- name: Ensure munge is enabled and running
+  ansible.builtin.service:
+    name: munge
+    enabled: true
+    state: started
+
 - name: Conf edit block
   delegate_to: "{{ item }}"
   block:
@@ -50,6 +56,8 @@
         owner: "{{ root_user }}"
         group: "{{ root_group }}"
         mode: "{{ conf_file_mode }}"
+
+# TODO: remove the login node is present in any of the partitions
 
 - name: Partition edit block
   delegate_to: "{{ item }}"

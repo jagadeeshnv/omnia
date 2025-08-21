@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+config_filename: "omnia_config.yml"
 ctld_list: []
 compute_list: []
 login_list: []
