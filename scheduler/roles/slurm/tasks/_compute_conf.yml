@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-# - pause:
+- name: Distribute munge key to compute nodes
+  ansible.posix.synchronize:
+    src: "{{ munge_key_dest }}"
+    dest: "{{ munge_key_dest | dirname }}"
+    mode: push
+    checksum: true
+  delegate_to: "{{ item }}"
+  when: not shared_munge_key
+  notify:
+    - Restart munge
 
 - name: Conf edit block
   delegate_to: "{{ item }}"
@@ -41,8 +50,6 @@
         owner: "{{ root_user }}"
         group: "{{ root_group }}"
         mode: "{{ conf_file_mode }}"
-
-# - pause:
 
 - name: Partition edit block
   delegate_to: "{{ item }}"
@@ -73,5 +80,3 @@
         line: "PartitionName={{ slurm_partition_name }} Nodes={{ worker_nodes }} MaxTime=INFINITE State=UP"
         regexp: "^PartitionName={{ slurm_partition_name }} "
       when: worker_nodes is defined
-
-# - pause:
