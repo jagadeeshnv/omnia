@@ -1,9 +1,5 @@
 ---
 # tasks file for slurm
-- ansible.builtin.debug:
-    var: slurm_installation_type
-- pause:
-
 - name: Append share path if NFS
   ansible.builtin.set_fact:
     slurm_share_prefix: "{{ share_path + '/' + slurm_dir_name if (slurm_installation_type == nfs_share_slurm) else '/' }}"

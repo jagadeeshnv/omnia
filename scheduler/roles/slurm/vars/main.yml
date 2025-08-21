@@ -17,6 +17,7 @@ cluster_name: cluster # TODO: direct load vars omnia_config.yml
 slurm_uid: 6001
 slurm_user: slurm
 slurm_user_group: slurm
+# shared_munge_key: "/intra_cluster_nfs/slurm/cluster/shared_munge.key"
 shared_munge_key: ""
 slurm_installation_type: "{{ hostvars['localhost']['slurm_installation_type'] }}" # TODO direct load vars omnia_config.yml
 restart_slurm_services: "{{ hostvars['localhost']['restart_slurm_services'] }}"
