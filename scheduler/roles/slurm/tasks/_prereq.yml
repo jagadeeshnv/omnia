@@ -22,3 +22,11 @@
   ansible.builtin.set_fact:
     node_ip: "{{ ansible_host }}"
 
+- name: Ensure munge dir
+  ansible.builtin.file:
+    path: "{{ munge_key_dest | dirname }}"
+    state: directory
+    owner: "{{ munge_user }}"
+    group: "{{ munge_group }}"
+    mode: "{{ munge_dir_mode }}"
+

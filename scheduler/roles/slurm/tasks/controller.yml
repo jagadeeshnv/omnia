@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-# TODO: munge needs logic tweak to take key from a shared location
+- name: Fetch omnia_config.yml inputs
+  ansible.builtin.include_tasks: input_vars.yml
+  run_once: true
+
 - name: Prereq vars
   ansible.builtin.include_tasks: _prereq.yml
 

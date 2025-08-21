@@ -29,9 +29,6 @@
   when: not shared_munge_key and ('slurm_control_node' in group_names)
   run_once: true
   block:
-    - name: No shared MUNGE key
-      pause:
-
     - name: Check if munge key exists
       ansible.builtin.stat:
         path: "{{ munge_key_dest }}"
@@ -79,9 +76,4 @@
       notify:
         - Restart munge
 
-- name: Ensure munge is enabled and running
-  ansible.builtin.service:
-    name: munge
-    enabled: true
-    state: started
-  no_log: true
+  # no_log: true
