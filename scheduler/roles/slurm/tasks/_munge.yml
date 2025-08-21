@@ -41,17 +41,6 @@
       notify:
         - Restart munge
 
-    # - name: Distribute munge key to compute nodes
-    #   ansible.posix.synchronize:
-    #     src: "{{ munge_key_dest }}"
-    #     dest: "{{ munge_key_dest | dirname }}"
-    #     mode: pull
-    #     checksum: true
-    #   delegate_to: "{{ item }}"
-    #   notify:
-    #     - Restart munge
-    #   with_items: "{{ ansible_play_hosts_all }}"
-
 - name: When external munge key is present
   when: shared_munge_key and (shared_munge_key | length) > 0
   block:

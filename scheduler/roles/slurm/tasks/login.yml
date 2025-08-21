@@ -26,9 +26,13 @@
   ansible.builtin.include_tasks: common.yml
 
 - name: Install slurm packages
-  ansible.builtin.shell: "dnf install -y --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ slurm"
-  failed_when: false
-  changed_when: false
+  ansible.builtin.command:
+    argv: "{{ dnf_command + slurm_login_packages[ansible_os_family] }}"
+  register: dnf_out
+  failed_when: dnf_out.rc != 0
+  changed_when: dnf_out.rc == 0
+  timeout: 90
+  ignore_errors: true
 
 - name: Remove local slurm.conf
   ansible.builtin.file:

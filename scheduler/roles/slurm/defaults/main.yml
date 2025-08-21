@@ -24,6 +24,7 @@ slurmctld_service_default_path: '/usr/lib/systemd/system/slurmctld.service'
 slurmd_service_default_path: '/usr/lib/systemd/system/slurmd.service'
 slurmdbd_service_default_path: '/usr/lib/systemd/system/slurmdbd.service'
 sys_env_path: '/etc/environment'
+repodir: "/etc/yum.repos.d"
 mpi: {}
 cgroup: {}
 __cgroup_default_config:
