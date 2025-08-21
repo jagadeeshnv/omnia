@@ -29,4 +29,3 @@
     owner: "{{ munge_user }}"
     group: "{{ munge_group }}"
     mode: "{{ munge_dir_mode }}"
-

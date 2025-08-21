@@ -66,7 +66,9 @@
     - name: Extract Nodes from {{ slurm_partition_name }}
       ansible.builtin.set_fact:
         specific_nodes:
-          "{{ (slurm_conf.content | b64decode | split('\n') | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*') | map('regex_replace','^PartitionName='+
+          "{{ (slurm_conf.content | b64decode | split('\n')
+           | select('match','^PartitionName='+ slurm_partition_name +'\\s+.*')
+           | map('regex_replace','^PartitionName='+
           slurm_partition_name +'\\s+.*Nodes=(\\S+).*', '\\1')) }}"
 
     - name: Create worker nodes list

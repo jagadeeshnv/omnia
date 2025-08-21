@@ -69,10 +69,13 @@
 
 # TODO: To read packages from the software config json based on role name ex: slurm_control_node
 - name: Install slurm ctld packages
-  ansible.builtin.command: "dnf install -y --installroot={{ installroot }} --setopt=reposdir=/etc/yum.repos.d/ slurm-slurmctld"
+  ansible.builtin.command:
+    argv: "{{ dnf_command + slurm_controller_packages[ansible_os_family] }}"
   register: dnf_out
-  failed_when: false
+  failed_when: dnf_out.rc != 0
   changed_when: dnf_out.rc == 0
+  timeout: 300
+  ignore_errors: true
 
 - name: Create files
   ansible.builtin.file:
