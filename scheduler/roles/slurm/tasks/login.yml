@@ -29,10 +29,8 @@
   ansible.builtin.command:
     argv: "{{ dnf_command + slurm_login_packages[ansible_os_family] }}"
   register: dnf_out
-  failed_when: dnf_out.rc != 0
+  failed_when: false
   changed_when: dnf_out.rc == 0
-  timeout: 90
-  ignore_errors: true
 
 - name: Remove local slurm.conf
   ansible.builtin.file:
