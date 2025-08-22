@@ -68,14 +68,12 @@
     insertafter: '^ClusterName=*'
 
 # TODO: To read packages from the software config json based on role name ex: slurm_control_node
-- name: Install slurm ctld packages
+- name: Install slurm ctld packages # Takes about 10 minutes for nfs_share
   ansible.builtin.command:
     argv: "{{ dnf_command + slurm_controller_packages[ansible_os_family] }}"
   register: dnf_out
-  failed_when: dnf_out.rc != 0
+  failed_when: false # NFS fails for some packages and Error in rpm db transaction
   changed_when: dnf_out.rc == 0
-  timeout: 300
-  ignore_errors: true
 
 - name: Create files
   ansible.builtin.file:
