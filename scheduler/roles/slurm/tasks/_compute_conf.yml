@@ -28,6 +28,7 @@
     name: munge
     enabled: true
     state: started
+  no_log: true
 
 - name: Conf edit block
   delegate_to: "{{ item }}"
