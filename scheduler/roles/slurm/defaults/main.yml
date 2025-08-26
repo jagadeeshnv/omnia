@@ -26,7 +26,7 @@ slurmdbd_service_default_path: '/usr/lib/systemd/system/slurmdbd.service'
 sys_env_path: '/etc/environment'
 repodir: "/etc/yum.repos.d"
 # This validates just the keys and not the values, as native support for this schema is not available from slurm
-__slurm_conf_keys: 
+__slurm_conf_keys:
 # updated from version 22.08 using cmd -> scontrol show config
   - AccountingStorageBackupHost
   - AccountingStorageEnforce
