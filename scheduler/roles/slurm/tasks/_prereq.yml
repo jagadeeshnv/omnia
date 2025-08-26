@@ -25,10 +25,6 @@
       # TODO: Add support for cgroup and slurmdbd
     fail_msg: "The following slurm config keys are invalid: {{ slurm_conf_dict.keys() | list | difference(__slurm_conf_keys) | join(', ') }}"
 
-- debug:
-    var: slurm_conf_dict
-- pause:
-
 - name: Set facts for node ip # In case of multi NICs updates the right ip
   ansible.builtin.set_fact:
     node_ip: "{{ ansible_host }}"
