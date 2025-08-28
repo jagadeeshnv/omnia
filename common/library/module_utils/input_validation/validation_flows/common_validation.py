@@ -1164,7 +1164,7 @@ def validate_omnia_config(
                 en_us_validation_msg.INTEL_GAUDI_FAIL_MSG
             )
         )
-    if ("slurm" in sw_list or "slurm" in sw_list):
+    if ("slurm" in sw_list and "slurm" in tag_names):
         validate_slurm(data, errors, input_file_path)
     if ("k8s" in sw_list or "service_k8s" in sw_list) and \
         ("k8s" in tag_names or "service_k8s" in tag_names):
