@@ -33,6 +33,11 @@
           "restart_slurm_services": {
             "description": "indicates whether slurm control node services(slurmctld) should be restarted or not and if  restart_slurm_services is set to true, slurmctld services will be restarted on every execution of omnia.yml",
             "type": "boolean"
+          },
+          "nfs_storage_name": { 
+            "type": "string", 
+            "minLength": 1,
+            "description": "Name of the nfs storage in storage_config.yml" 
           }
         },
         "required": [
