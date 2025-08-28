@@ -374,8 +374,10 @@ def validate_security_config(
     software_list = get_software_names(software_config_json)
     authentication_type = ""
     required = {"openldap","freeipa"}
+    software_set = {sw.get("name") for sw in software_list}
+    # module.fail_json(msg="Unhashable", required=required, provided=software_set)
 
-    matches = required.intersection(software_list)
+    matches = required.intersection(software_set)
     if len(matches) == 2:
         errors.append(
                 create_error_msg(authentication_type,
@@ -436,6 +438,82 @@ def validate_network_config(
 
     return errors
 
+def get_matching_clusters_for_nfs(nfs_name, omnia_config):
+    """
+    Returns a dict of matching clusters for the given NFS name.
+    """
+    matching_clusters = {}
+
+    # Service k8s
+    for svc in omnia_config.get("service_k8s_cluster", []):
+        if (
+            svc.get("nfs_storage_name") == nfs_name
+            and svc.get("deployment") is True
+        ):
+            matching_clusters["service_k8s_cluster"] = svc
+
+    # Compute k8s
+    for comp in omnia_config.get("compute_k8s_cluster", []):
+        if (
+            comp.get("nfs_storage_name") == nfs_name
+            and comp.get("deployment") is True
+        ):
+            matching_clusters["compute_k8s_cluster"] = comp
+
+    # Slurm
+    for slurm in omnia_config.get("slurm_cluster", []):
+        if slurm.get("nfs_storage_name") == nfs_name:
+            matching_clusters["slurm_cluster"] = slurm
+
+    return matching_clusters
+
+def validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors):
+    """
+    Validate UCX/OpenMPI dependencies:
+    - If UCX/OpenMPI + Slurm → slurm cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + service_k8s → service_k8s cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + compute_k8s → compute_k8s cluster must be in matching_clusters
+    """
+
+    has_ucx_or_openmpi = (
+        contains_software(softwares, "ucx") or contains_software(softwares, "openmpi")
+    )
+
+    if not has_ucx_or_openmpi:
+        return  # No UCX/OpenMPI → no dependency check
+
+    # Case 1: Slurm required
+    if contains_software(softwares, "slurm"):
+        if "slurm_cluster" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "slurm_cluster",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 2: Service K8s required
+    elif contains_software(softwares, "service_k8s"):
+        if "service_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "service_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 3: Compute K8s required
+    elif contains_software(softwares, "compute_k8s"):
+        if "compute_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "compute_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
 
 def validate_storage_config(
     input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
@@ -457,6 +535,13 @@ def validate_storage_config(
     """
     errors = []
     software_config_file_path = create_file_path(input_file_path, file_names["software_config"])
+    omnia_config_file_path = create_file_path(input_file_path, file_names["omnia_config"])
+
+    #read contents of omnia_config file in a variable
+    omnia_config_json = validation_utils.load_yaml_as_json(
+        omnia_config_file_path, omnia_base_dir, project_name, logger, module
+    )
+
     software_config_json = None
     with open(software_config_file_path, "r", encoding="utf-8") as schema_file:
         software_config_json = json.load(schema_file)
@@ -467,10 +552,7 @@ def validate_storage_config(
                                            en_us_validation_msg.BEEGFS_VERSION_FAIL_MSG))
 
     allowed_options = {"nosuid", "rw", "sync", "hard", "intr"}
-    slurm_share_val = False
-    k8s_share_val = False
-    multiple_slurm_share_val = False
-    multiple_k8s_share_val = False
+
     for nfs_client_params in data["nfs_client_params"]:
         client_mount_options = nfs_client_params["client_mount_options"]
         client_mount_options_set = set(client_mount_options.split(","))
@@ -484,55 +566,20 @@ def validate_storage_config(
                 )
             )
 
-        slurm_share_raw = str(nfs_client_params.get("slurm_share", "false")).strip().lower()
-        if slurm_share_raw == "true":
-            if not slurm_share_val:
-                slurm_share_val = True
-            else:
-                multiple_slurm_share_val = True
+        nfs_strg_name = nfs_client_params["nfs_name"]
+        matching_clusters = get_matching_clusters_for_nfs(nfs_strg_name, omnia_config_json)
 
-        k8s_share_raw = str(nfs_client_params.get("k8s_share", "false")).strip().lower()
-        if k8s_share_raw == "true":
-            if not k8s_share_val:
-                k8s_share_val = True
-            else:
-                multiple_k8s_share_val = True
-
-    if (contains_software(softwares, "slurm") and not slurm_share_val) or multiple_slurm_share_val:
-        errors.append(
-            create_error_msg(
-                "slurm_share",
-                slurm_share_val,
-                en_us_validation_msg.SLURM_SHARE_FAIL_MSG
-            )
-        )
-
-    if (contains_software(softwares, "k8s") and not k8s_share_val) or multiple_k8s_share_val:
-        errors.append(
-            create_error_msg(
-                "k8s_share",
-                k8s_share_val,
-                en_us_validation_msg.K8S_SHARE_FAIL_MSG
-            )
-        )
-
-    if contains_software(softwares, "ucx") or contains_software(softwares, "openmpi"):
-        if not k8s_share_val or not slurm_share_val:
+        if not matching_clusters:
             errors.append(
                 create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.BENCHMARK_TOOLS_FAIL_MSG
+                    "For the mentioned",
+                    nfs_strg_name,
+                    f"in storage_config.yml, no matching cluster found in omnia_config.yml "
+                    f"with deployment enabled for NFS '{nfs_strg_name}'."
                 )
             )
-        elif multiple_slurm_share_val or multiple_k8s_share_val:
-            errors.append(
-                create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.MULT_SHARE_FAIL_MSG
-                )
-            )
+        else: # Only validate if clusters are found
+            validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors)
 
     beegfs_mounts = data["beegfs_mounts"]
     if beegfs_mounts != "/mnt/beegfs":
@@ -948,6 +995,46 @@ def is_ip_in_range(ip_str, ip_range_str):
     except ValueError:
         return False
 
+def validate_slurm(data, errors, input_file_path):
+    """
+    Validates Slurm cluster configurations.
+
+    Parameters:
+        data (dict): A dictionary containing Slurm cluster configurations.
+        errors (list): A list to store error messages.
+    """
+    if "slurm_cluster" not in data:
+        errors.append(
+            create_error_msg(
+                "slurm_cluster",
+                None,
+                "Slurm cluster configuration not found in the input file.",
+            )
+        )
+    slurm_cluster = data["slurm_cluster"][0] # To be updated if deployment flag is used
+    if slurm_cluster.get("installation_type") == "nfs_share":
+        if not slurm_cluster.get("nfs_storage_name"):
+            errors.append(
+                create_error_msg(
+                    "share_path",
+                    None,
+                    f"Slurm nfs_storage_name not provided for slurm cluster {slurm_cluster.get('cluster_name')}.",
+                )
+            )
+        else:
+            storage_config_path = create_file_path(input_file_path, file_names["storage_config"])
+            with open(storage_config_path, "r", encoding="utf-8") as f:
+                storage_config = yaml.safe_load(f)
+            nfs_storage_names = [nfs_storage.get("nfs_name") for nfs_storage in storage_config.get("nfs_client_params")]
+            if slurm_cluster.get("nfs_storage_name") not in nfs_storage_names:
+                errors.append(
+                    create_error_msg(
+                        "nfs_storage_name",
+                        None,
+                        f"Slurm nfs_storage_name {slurm_cluster.get('nfs_storage_name')} not found in storage_config.yml.",
+                    )
+                )
+
 def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, errors):
     """
     Validates Kubernetes cluster configurations.
@@ -1077,7 +1164,8 @@ def validate_omnia_config(
                 en_us_validation_msg.INTEL_GAUDI_FAIL_MSG
             )
         )
-
+    if ("slurm" in sw_list or "slurm" in sw_list):
+        validate_slurm(data, errors, input_file_path)
     if ("k8s" in sw_list or "service_k8s" in sw_list) and \
         ("k8s" in tag_names or "service_k8s" in tag_names):
         admin_bmc_networks = get_admin_bmc_networks(

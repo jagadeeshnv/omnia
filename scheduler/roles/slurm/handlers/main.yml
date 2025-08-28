@@ -58,18 +58,22 @@
     state: reloaded
     daemon_reload: true
     enabled: true
-  delegate_to: "{{ item }}"
-  loop: "{{ ctld_list }}"
-  when: restart_slurm_services
+  # delegate_to: "{{ ctld }}"
+  # loop: "{{ ctld_list }}"
+  # loop_control:
+    # loop_var: ctld
+  when: restart_slurm_services and ('slurm_control_node' in group_names)
   no_log: true
 
 - name: Restart slurmctld
   ansible.builtin.systemd_service:
     name: slurmctld
     state: restarted
-  delegate_to: "{{ item }}"
-  loop: "{{ ctld_list }}"
-  when: restart_slurm_services
+  # delegate_to: "{{ ctld }}"
+  # loop: "{{ ctld_list }}"
+  # loop_control:
+  #   loop_var: ctld
+  when: restart_slurm_services and ('slurm_control_node' in group_names)
   no_log: true
 
 - name: Reload slurmd

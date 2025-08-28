@@ -16,6 +16,8 @@
   ansible.builtin.package:
     name: "{{ munge_packages[ansible_os_family] }}"
     state: present
+  notify:
+    - Restart munge
 
 - name: Check munge dir
   ansible.builtin.file:
@@ -24,6 +26,8 @@
     owner: "{{ munge_user }}"
     group: "{{ munge_group }}"
     mode: "{{ munge_dir_mode }}"
+  notify:
+    - Restart munge
 
 - name: Special handling for control node
   when: not shared_munge_key and ('slurm_control_node' in group_names)
@@ -64,5 +68,3 @@
         mode: "{{ munge_dir_mode }}"
       notify:
         - Restart munge
-
-  # no_log: true
