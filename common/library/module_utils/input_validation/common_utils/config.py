@@ -75,7 +75,7 @@ input_file_inventory = {
         files["omnia_config"],
         files["high_availability_config"]
     ],
-    "k8s": [
+    "compute_k8s": [
         files['roles_config'],
         files["omnia_config"],
         files["high_availability_config"]
@@ -86,7 +86,7 @@ input_file_inventory = {
         files["high_availability_config"]
     ],
     "roce": [files["roce_plugin_config"]],
-    "storage": [files["storage_config"]],
+    "storage": [files["storage_config"], files["omnia_config"]],
     "proxy": [files["site_config"]],
     "prepare_oim": [
         files["software_config"],
@@ -175,7 +175,7 @@ TYPE_REQUIREMENTS = {
     "pip_module":["package"]
 }
 
-supported_telemetry_collection_type = ["prometheus"]
+supported_telemetry_collection_type = ["prometheus","kafka"]
 
 # used for security_config.yml login_node_security_config.yml validation
 supported_ldap_connection_type = ["TLS","SLS"]

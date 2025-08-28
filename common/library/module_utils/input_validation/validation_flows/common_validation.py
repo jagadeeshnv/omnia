@@ -17,12 +17,13 @@ This module contains functions for validating common configuration files.
 """
 import json
 import os
-import ipaddress
 import yaml
+import ipaddress
+import subprocess
 from ast import literal_eval
 import ansible.module_utils.input_validation.common_utils.data_fetch as get
+from ansible.module_utils.input_validation.validation_flows import csi_driver_validation
 import ansible.module_utils.input_validation.common_utils.data_validation as validate
-from ansible.modules.validate_input import generate_log_failure_message
 
 from ansible.module_utils.input_validation.common_utils import (
     validation_utils,
@@ -32,7 +33,6 @@ from ansible.module_utils.input_validation.common_utils import (
 )
 
 from ansible.module_utils.input_validation.validation_flows import scheduler_validation
-
 from ansible.module_utils.local_repo.software_utils import (
     load_json,
     set_version_variables,
@@ -124,7 +124,7 @@ def validate_software_config(
         new_file_path = json_files_dic.get("additional_software.json", None)
 
         # Validate the schema of the input file (L1)
-        validation_status = {}
+        validation_status = {"Passed": [], "Failed": []}
         vstatus = []
         project_data = {project_name: {"status": [], "tag": "additional_software"}}
         validation_status.update(project_data)
@@ -140,13 +140,23 @@ def validate_software_config(
         vstatus.append(schema_status)
 
         # Append the validation status for the input file
-        validation_status[project_name]["status"].append(
-            {new_file_path: "Passed" if schema_status else "Failed"})
+        if schema_status:
+            validation_status["Passed"].append(new_file_path)
+        else:
+            validation_status["Failed"].append(new_file_path)
 
         if False in vstatus:
             log_file_name = os.path.join(
                 config.input_validator_log_path, f"validation_omnia_{project_name}.log")
-            generate_log_failure_message(log_file_name, project_name, validation_status, module)
+            message = (f"Input validation failed for: {project_name} - additional_software.json"
+               f"Look at the logs for more details: filename={log_file_name}")
+
+            module.fail_json(
+                msg=message,
+                log_file_name=log_file_name,
+                passed_files=validation_status["Passed"],
+                failed_files=validation_status["Failed"]
+            )
 
         # Check for the addtional_software.json file exist
         if new_file_path is None or not file_exists(new_file_path, module, logger):
@@ -228,39 +238,38 @@ def is_version_valid(actual_version, expected):
     if isinstance(expected, list):
         return actual_version in expected
     return actual_version == expected
- 
+
 def validate_versions(data, expected):
     mismatches = []
- 
     # Validate top-level 'softwares'
     for sw in data.get("softwares", []):
         name = sw.get("name")
         version = sw.get("version")
         expected_version = expected.get(name)
- 
+
         if expected_version:
             if not version:
                 mismatches.append(f"{name} is missing a version")
             elif not is_version_valid(version, expected_version):
                 mismatches.append(f"{name} version mismatch: expected {expected_version}, got {version}")
- 
+
     # Validate subgroup software (e.g. "amdgpu": [{...}])
     for parent_key, children in data.items():
         if parent_key == "softwares" or not isinstance(children, list):
             continue
- 
+
         for sub_sw in children:
             name = sub_sw.get("name")
             version = sub_sw.get("version")
             expected_version = expected.get(name)
- 
+
             # Skip if version is not provided
             if expected_version and version:
                 if not is_version_valid(version, expected_version):
                     mismatches.append(
                         f"{name} version mismatch in {parent_key}: expected {expected_version}, got {version}"
                     )
- 
+
     return mismatches
 
 
@@ -435,6 +444,82 @@ def validate_network_config(
 
     return errors
 
+def get_matching_clusters_for_nfs(nfs_name, omnia_config):
+    """
+    Returns a dict of matching clusters for the given NFS name.
+    """
+    matching_clusters = {}
+
+    # Service k8s
+    for svc in omnia_config.get("service_k8s_cluster", []):
+        if (
+            svc.get("nfs_storage_name") == nfs_name
+            and svc.get("deployment") is True
+        ):
+            matching_clusters["service_k8s_cluster"] = svc
+
+    # Compute k8s
+    for comp in omnia_config.get("compute_k8s_cluster", []):
+        if (
+            comp.get("nfs_storage_name") == nfs_name
+            and comp.get("deployment") is True
+        ):
+            matching_clusters["compute_k8s_cluster"] = comp
+
+    # Slurm
+    for slurm in omnia_config.get("slurm_cluster", []):
+        if slurm.get("nfs_storage_name") == nfs_name:
+            matching_clusters["slurm_cluster"] = slurm
+
+    return matching_clusters
+
+def validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors):
+    """
+    Validate UCX/OpenMPI dependencies:
+    - If UCX/OpenMPI + Slurm → slurm cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + service_k8s → service_k8s cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + compute_k8s → compute_k8s cluster must be in matching_clusters
+    """
+
+    has_ucx_or_openmpi = (
+        contains_software(softwares, "ucx") or contains_software(softwares, "openmpi")
+    )
+
+    if not has_ucx_or_openmpi:
+        return  # No UCX/OpenMPI → no dependency check
+
+    # Case 1: Slurm required
+    if contains_software(softwares, "slurm"):
+        if "slurm_cluster" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "slurm_cluster",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 2: Service K8s required
+    elif contains_software(softwares, "service_k8s"):
+        if "service_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "service_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 3: Compute K8s required
+    elif contains_software(softwares, "compute_k8s"):
+        if "compute_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "compute_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
 
 def validate_storage_config(
     input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
@@ -456,6 +541,13 @@ def validate_storage_config(
     """
     errors = []
     software_config_file_path = create_file_path(input_file_path, file_names["software_config"])
+    omnia_config_file_path = create_file_path(input_file_path, file_names["omnia_config"])
+
+    #read contents of omnia_config file in a variable
+    omnia_config_json = validation_utils.load_yaml_as_json(
+        omnia_config_file_path, omnia_base_dir, project_name, logger, module
+    )
+
     software_config_json = None
     with open(software_config_file_path, "r", encoding="utf-8") as schema_file:
         software_config_json = json.load(schema_file)
@@ -466,10 +558,7 @@ def validate_storage_config(
                                            en_us_validation_msg.BEEGFS_VERSION_FAIL_MSG))
 
     allowed_options = {"nosuid", "rw", "sync", "hard", "intr"}
-    slurm_share_val = False
-    k8s_share_val = False
-    multiple_slurm_share_val = False
-    multiple_k8s_share_val = False
+
     for nfs_client_params in data["nfs_client_params"]:
         client_mount_options = nfs_client_params["client_mount_options"]
         client_mount_options_set = set(client_mount_options.split(","))
@@ -483,55 +572,70 @@ def validate_storage_config(
                 )
             )
 
-        slurm_share_raw = str(nfs_client_params.get("slurm_share", "false")).strip().lower()
-        if slurm_share_raw == "true":
-            if not slurm_share_val:
-                slurm_share_val = True
-            else:
-                multiple_slurm_share_val = True
+        nfs_strg_name = nfs_client_params["nfs_name"]
+        matching_clusters = get_matching_clusters_for_nfs(nfs_strg_name, omnia_config_json)
 
-        k8s_share_raw = str(nfs_client_params.get("k8s_share", "false")).strip().lower()
-        if k8s_share_raw == "true":
-            if not k8s_share_val:
-                k8s_share_val = True
-            else:
-                multiple_k8s_share_val = True
-
-    if (contains_software(softwares, "slurm") and not slurm_share_val) or multiple_slurm_share_val:
-        errors.append(
-            create_error_msg(
-                "slurm_share",
-                slurm_share_val,
-                en_us_validation_msg.SLURM_SHARE_FAIL_MSG
-            )
-        )
-
-    if (contains_software(softwares, "k8s") and not k8s_share_val) or multiple_k8s_share_val:
-        errors.append(
-            create_error_msg(
-                "k8s_share",
-                k8s_share_val,
-                en_us_validation_msg.K8S_SHARE_FAIL_MSG
-            )
-        )
-
-    if contains_software(softwares, "ucx") or contains_software(softwares, "openmpi"):
-        if not k8s_share_val or not slurm_share_val:
+        if not matching_clusters:
             errors.append(
                 create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.BENCHMARK_TOOLS_FAIL_MSG
+                    "For the mentioned",
+                    nfs_strg_name,
+                    f"in storage_config.yml, no matching cluster found in omnia_config.yml "
+                    f"with deployment enabled for NFS '{nfs_strg_name}'."
                 )
             )
-        elif multiple_slurm_share_val or multiple_k8s_share_val:
-            errors.append(
-                create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.MULT_SHARE_FAIL_MSG
-                )
-            )
+        else: # Only validate if clusters are found
+            validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors)
+
+    #     slurm_share_raw = str(nfs_client_params.get("slurm_share", "false")).strip().lower()
+    #     if slurm_share_raw == "true":
+    #         if not slurm_share_val:
+    #             slurm_share_val = True
+    #         else:
+    #             multiple_slurm_share_val = True
+
+    #     k8s_share_raw = str(nfs_client_params.get("k8s_share", "false")).strip().lower()
+    #     if k8s_share_raw == "true":
+    #         if not k8s_share_val:
+    #             k8s_share_val = True
+    #         else:
+    #             multiple_k8s_share_val = True
+
+    # if (contains_software(softwares, "slurm") and not slurm_share_val) or multiple_slurm_share_val:
+    #     errors.append(
+    #         create_error_msg(
+    #             "slurm_share",
+    #             slurm_share_val,
+    #             en_us_validation_msg.SLURM_SHARE_FAIL_MSG
+    #         )
+    #     )
+
+    # if (contains_software(softwares, "k8s") and not k8s_share_val) or multiple_k8s_share_val:
+    #     errors.append(
+    #         create_error_msg(
+    #             "k8s_share",
+    #             k8s_share_val,
+    #             en_us_validation_msg.K8S_SHARE_FAIL_MSG
+    #         )
+    #     )
+
+    # if contains_software(softwares, "ucx") or contains_software(softwares, "openmpi"):
+    #     if not k8s_share_val or not slurm_share_val:
+    #         errors.append(
+    #             create_error_msg(
+    #                 "nfs_client_params",
+    #                 "",
+    #                 en_us_validation_msg.BENCHMARK_TOOLS_FAIL_MSG
+    #             )
+    #         )
+    #     elif multiple_slurm_share_val or multiple_k8s_share_val:
+    #         errors.append(
+    #             create_error_msg(
+    #                 "nfs_client_params",
+    #                 "",
+    #                 en_us_validation_msg.MULT_SHARE_FAIL_MSG
+    #             )
+    #         )
 
     beegfs_mounts = data["beegfs_mounts"]
     if beegfs_mounts != "/mnt/beegfs":
@@ -946,8 +1050,10 @@ def is_ip_in_range(ip_str, ip_range_str):
         return start_ip <= ip <= end_ip
     except ValueError:
         return False
+    
 
-def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, errors):
+def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, errors, 
+                 omnia_base_dir, project_name, logger, module, input_file_path):
     """
     Validates Kubernetes cluster configurations.
 
@@ -962,10 +1068,10 @@ def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, erro
     bmc_static_range = admin_bmc_networks["bmc_network"]["static_range"]
     bmc_dynamic_range = admin_bmc_networks["bmc_network"]["dynamic_range"]
     primary_oim_admin_ip = admin_bmc_networks["admin_network"]["primary_oim_admin_ip"]
-
+    
     # service_k8s_cluster = data["service_k8s_cluster"]
     cluster_set = {}
-    if "k8s" in softwares and "k8s" in tag_names:
+    if "compute_k8s" in softwares and "compute_k8s" in tag_names:
         cluster_set["compute_k8s_cluster"] = data.get(
             "compute_k8s_cluster", [])
     if "service_k8s" in softwares and "service_k8s" in tag_names:
@@ -997,7 +1103,7 @@ def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, erro
                             f"{cluster_name} not found in high_availability_config.yml"
                         ))
                 pod_external_ip_range = kluster.get("pod_external_ip_range")
-                if not pod_external_ip_range:
+                if not pod_external_ip_range or str(pod_external_ip_range).strip() == "":
                     errors.append(
                         create_error_msg(
                             "Pod External IP Range -",
@@ -1031,7 +1137,41 @@ def validate_k8s(data, admin_bmc_networks, softwares, ha_config, tag_names, erro
                         create_error_msg(
                             "IP overlap -",
                             None,
-                            en_us_validation_msg.IP_OVERLAP_FAIL_MSG))
+                           en_us_validation_msg.IP_OVERLAP_FAIL_MSG))
+
+                #csi validation
+                if (
+                      "csi_driver_powerscale" in softwares
+                      and ("k8s" in softwares or "service_k8s" in softwares)
+                    ):
+
+                    csi_secret_file_path = kluster.get("csi_powerscale_driver_secret_file_path")
+                    csi_values_file_path = kluster.get("csi_powerscale_driver_values_file_path")
+                    
+                    # Validate secret file path
+                    if not csi_secret_file_path or \
+                    not csi_secret_file_path.strip() or \
+                    not os.path.exists(csi_secret_file_path.strip()):
+                        errors.append(
+                            create_error_msg(
+                                "csi_powerscale_driver_secret_file_path",
+                                csi_secret_file_path,
+                                en_us_validation_msg.CSI_DRIVER_SECRET_FAIL_MSG,
+                            )
+                        )
+                    else:
+                        # If secret path is valid, ensure values path is also valid
+                        if not csi_values_file_path or \
+                        not csi_values_file_path.strip() or \
+                        not os.path.exists(csi_values_file_path.strip()):
+                            errors.append(
+                                create_error_msg(
+                                    "csi_powerscale_driver_values_file_path",
+                                    csi_values_file_path,
+                                    en_us_validation_msg.CSI_DRIVER_VALUES_FAIL_MSG,
+                                )
+                            )
+                        csi_driver_validation.validate_powerscale_secret_and_values_file(csi_secret_file_path,csi_values_file_path, errors, input_file_path)
 
 def validate_omnia_config(
         input_file_path,
@@ -1057,7 +1197,7 @@ def validate_omnia_config(
         list: A list of errors.
     """
     errors = []
-    tag_names = literal_eval(module.params["tag_names"])
+    tag_names = module.params["tag_names"]
 
     software_config_file_path = create_file_path(
         input_file_path, file_names["software_config"])
@@ -1066,7 +1206,7 @@ def validate_omnia_config(
     softwares = software_config_json["softwares"]
     sw_list = [k['name'] for k in softwares]
 
-    # verify intel_gaudi with sofwate config json
+    # verify intel_gaudi with sofware config json
     run_intel_gaudi_tests = data["run_intel_gaudi_tests"]
     if "intelgaudi" in sw_list and not run_intel_gaudi_tests:
         errors.append(
@@ -1077,8 +1217,9 @@ def validate_omnia_config(
             )
         )
 
-    if ("k8s" in sw_list or "service_k8s" in sw_list) and \
-        ("k8s" in tag_names or "service_k8s" in tag_names):
+
+    if ("compute_k8s" in sw_list or "service_k8s" in sw_list) and \
+        ("compute_k8s" in tag_names or "service_k8s" in tag_names):
         admin_bmc_networks = get_admin_bmc_networks(
             input_file_path, logger, module, omnia_base_dir, module_utils_base, project_name)
         ha_config_path = create_file_path(
@@ -1087,17 +1228,48 @@ def validate_omnia_config(
             ha_config = yaml.safe_load(f)
         for k in ["service_k8s_cluster_ha", "compute_k8s_cluster_ha"]:
             ha_config[k] = [xha["cluster_name"] for xha in ha_config.get(k, [])]
-        validate_k8s(data, admin_bmc_networks, sw_list, ha_config, tag_names, errors)
+        validate_k8s(data, admin_bmc_networks, sw_list, ha_config, tag_names,
+                        errors, omnia_base_dir, project_name, logger, module, input_file_path)
     return errors
 
+def check_is_service_cluster_roles_defined(
+        errors,
+        input_file_path,
+        omnia_base_dir,
+        project_name,
+        logger,
+        module):
+    """
+    Checks if the required service cluster roles are configured in the roles_config.yml file.
+
+    Args:
+        errors (list): A list to store error messages.
+        input_file_path (str): The path to the input file.
+        omnia_base_dir (str): The base directory for Omnia.
+        project_name (str): The name of the project.
+        logger (object): A logger object for logging messages.
+        module (object): A module object for logging messages.
+
+    Returns:
+        True if service cluster roles are defined else returns False
+    """
+    roles_config_file_path = create_file_path(input_file_path, file_names["roles_config"])
+    roles_config_json = validation_utils.load_yaml_as_json(
+        roles_config_file_path, omnia_base_dir, project_name, logger, module)
+    roles_details = roles_config_json.get("Roles", [])
+    # Extract the 'name' values from List1
+    roles_configured = [item['name'] for item in roles_details]
+    service_cluster_roles = ["service_kube_control_plane","service_etcd","service_kube_node"]
+    return all(role in roles_configured for role in service_cluster_roles)
+
 def validate_telemetry_config(
-    _input_file_path,
+    input_file_path,
     data,
-    _logger,
-    _module,
-    _omnia_base_dir,
+    logger,
+    module,
+    omnia_base_dir,
     _module_utils_base,
-    _project_name
+    project_name
 ):
 
     """
@@ -1128,21 +1300,46 @@ def validate_telemetry_config(
     idrac_telemetry_support = data.get("idrac_telemetry_support")
     federated_idrac_telemetry_collection = data.get("federated_idrac_telemetry_collection")
 
+    collection_type = data.get("idrac_telemetry_collection_type")
     if idrac_telemetry_support:
-        collection_type = data.get("idrac_telemetry_collection_type")
-        if collection_type and collection_type not in config.supported_telemetry_collection_type:
+        if collection_type:
+            if collection_type not in config.supported_telemetry_collection_type:
+                errors.append(create_error_msg(
+                    "idrac_telemetry_collection_type",
+                    collection_type,
+                    en_us_validation_msg.UNSUPPORTED_IDRAC_TELEMETRY_COLLECTION_TYPE
+                    )
+                )
+                return errors
+
+            if collection_type == "kafka" and not federated_idrac_telemetry_collection:
+                errors.append(create_error_msg(
+                    "for idrac_telemetry_collection_type",
+                    collection_type,
+                    en_us_validation_msg.KAFKA_ENABLE_FEDERATED_IDRAC_TELEMETRY_COLLECTION
+                    )
+                )
+                return errors
+
+        is_service_cluster_defined = check_is_service_cluster_roles_defined(errors,
+                                    input_file_path,
+                                    omnia_base_dir,
+                                    project_name,
+                                    logger,
+                                    module)
+
+        if federated_idrac_telemetry_collection and not is_service_cluster_defined:
             errors.append(create_error_msg(
-                "idrac_telemetry_collection_type",
-                collection_type,
-                en_us_validation_msg.UNSUPPORTED_IDRAC_TELEMETRY_COLLECTION_TYPE
+                "federated_idrac_telemetry_collection can be",
+                federated_idrac_telemetry_collection,
+                en_us_validation_msg.TELEMETRY_SERVICE_CLUSTER_ENTRY_MISSING_ROLES_CONFIG_MSG
                 )
             )
-
-    if federated_idrac_telemetry_collection and not idrac_telemetry_support:
-        errors.append(create_error_msg(
+        elif not federated_idrac_telemetry_collection and is_service_cluster_defined:
+            errors.append(create_error_msg(
                 "federated_idrac_telemetry_collection",
                 federated_idrac_telemetry_collection,
-                en_us_validation_msg.FEDERATED_IDRAC_TELEMETRY_COLLECTION_FAIL
+                en_us_validation_msg.ENABLE_FEDERATED_IDRAC_TELEMETRY_COLLECTION
                 )
             )
 
