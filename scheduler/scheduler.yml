@@ -154,8 +154,11 @@
     - k8s_amd
 
 - name: Install Slurm
-  hosts: slurm_control_node, slurm_node, login
+  hosts: slurm_control_node, slurm_node, login_node
   any_errors_fatal: true
+  # vars:
+  #   ctld_list:
+  #     - node1
   roles:
     - slurm
 
