@@ -48,8 +48,6 @@
         owner: "{{ root_user }}"
         group: "{{ root_group }}"
         mode: "{{ conf_file_mode }}"
-      notify:
-        - Restart slurmctld
       loop:
         - ["AccountingStorageType", "accounting_storage/slurmdbd"]
         - ["AccountingStorageHost", "{{ inventory_hostname | split('.') | first }}"]

@@ -66,7 +66,6 @@
     mode: "{{ slurm_dbd_mode }}"
   run_once: true
   notify:
-    - Restart slurmctld
     - Restart slurmdbd
 
 - name: Read the ctlds from the NFS conf
