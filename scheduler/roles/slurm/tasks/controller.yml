@@ -12,9 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+- name: Set slurmdbd host to slurmctld if not specified
+  ansible.builtin.add_host:
+    name: "{{ groups['slurm_control_node'][0] }}" # HA
+    groups: slurm_dbd
+  when: (('slurm_dbd' not in groups) or (('slurm_dbd' in groups) and (groups['slurm_dbd']|length == 0)))
+
 - name: Fetch omnia_config.yml inputs
   ansible.builtin.include_tasks: input_vars.yml
-  run_once: true
+  # run_once: true
 
 - name: Prereq vars
   ansible.builtin.include_tasks: _prereq.yml
@@ -45,7 +51,7 @@
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
   when: not p.stat.exists
-  run_once: true
+  run_once: "{{ true if (slurm_installation_type == nfs_share_slurm) else false }}"
   notify:
     - Restart slurmctld
 
