@@ -29,7 +29,7 @@
 
 - name: Fetch omnia_config.yml inputs
   ansible.builtin.include_tasks: input_vars.yml
-  run_once: true
+  # run_once: true
 
 - name: Prereq vars
   ansible.builtin.include_tasks: _prereq.yml
@@ -80,7 +80,7 @@
   ansible.builtin.include_tasks: _dbd_conf.yml
   loop: "{{ ctld_list }}"
 
-- name: Install slurmd packages
+- name: Install slurmdbd packages
   ansible.builtin.command:
     argv: "{{ dnf_command + slurm_dbd_packages[ansible_os_family] }}"
   register: dnf_out
@@ -147,6 +147,10 @@
   notify:
     - Reload slurmdbd
     - Restart slurmdbd
+
+- name: Add the computes to list
+  ansible.builtin.set_fact:
+    dbd_list: "{{ (dbd_list + [inventory_hostname_short]) | unique | list }}"
 
 - name: Set dbd symbolic links
   when: slurm_installation_type == nfs_share_slurm

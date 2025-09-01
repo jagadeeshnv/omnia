@@ -20,13 +20,16 @@
     cluster_name: "{{ slurm_cluster[0].cluster_name }}"
     slurm_installation_type: "{{ slurm_cluster[0].installation_type }}"
     restart_slurm_services: "{{ slurm_cluster[0].restart_slurm_services }}"
-    nfs_storage_name: "{{ slurm_cluster[0].nfs_storage_name }}"
 
 - name: Read nfs
   when: slurm_installation_type == 'nfs_share'
   block:
     - name: Include storage vars
       ansible.builtin.include_vars: "{{ input_project_dir }}/storage_config.yml"
+
+    - name: Set facts for slurm
+      ansible.builtin.set_fact:
+        nfs_storage_name: "{{ slurm_cluster[0].nfs_storage_name }}"
 
     - name: Read the slurm mount point
       ansible.builtin.set_fact:
