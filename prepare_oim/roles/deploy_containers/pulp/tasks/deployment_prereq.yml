@@ -20,22 +20,25 @@
 
 - name: Configure Pulp Server with Admin IP or VIP
   ansible.builtin.set_fact:
-    pulp_server_ip: "{{ hostvars['localhost']['admin_nic_ip'] }}"
-    pulp_password: "{{ hostvars['localhost']['pulp_password'] }}"
+    # pulp_server_ip: "{{ hostvars['localhost']['admin_nic_ip'] }}"
+    pulp_server_ip: "{{ ansible_fqdn }}"
+    # pulp_password: "{{ hostvars['localhost']['pulp_password'] }}"
   when: not hostname_enabled
-  no_log: true
+  # no_log: true
 
 - name: Configure Pulp Server with hostname when hostname_enabled is true
   ansible.builtin.set_fact:
     pulp_server_ip: "" # Placeholder for Pulp hostname
-    pulp_password: "{{ hostvars['localhost']['pulp_password'] }}"
+    # pulp_password: "{{ hostvars['localhost']['pulp_password'] }}"
   when: hostname_enabled
   no_log: true
 
 - name: Invoke Pulp Container Deployment Tasks for HTTP
   ansible.builtin.include_tasks: deploy_pulp_container_http.yml
-  when: not hostvars['localhost']['pulp_protocol_https']
+  # when: not hostvars['localhost']['pulp_protocol_https']
+  when: not pulp_protocol_https
 
 - name: Invoke Pulp Container Deployment Tasks for HTTPS
   ansible.builtin.include_tasks: deploy_pulp_container_https.yml
-  when: hostvars['localhost']['pulp_protocol_https']
+  # when: hostvars['localhost']['pulp_protocol_https']
+  when: pulp_protocol_https

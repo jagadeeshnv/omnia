@@ -15,15 +15,14 @@
 ---
 - name: Set Fact for Pulp Server with Admin IP or VIP
   ansible.builtin.set_fact:
-    pulp_server_ip: "{{ hostvars['localhost']['admin_nic_ip'] }}"
-  when: not hostvars['oim']['hostname_enabled']
-  no_log: true
+    pulp_server_ip: "{{ ansible_fqdn }}"
+  # when: not hostvars['oim']['hostname_enabled']
 
-- name: Configure Pulp Server with hostname when hostname_enabled is true
-  ansible.builtin.set_fact:
-    pulp_server_ip: "" # Placeholder for Pulp hostname
-  when: hostvars['oim']['hostname_enabled']
-  no_log: true
+# - pause: 
+# - name: Configure Pulp Server with hostname when hostname_enabled is true
+  # ansible.builtin.set_fact:
+    # pulp_server_ip: "" # Placeholder for Pulp hostname
+  # when: hostvars['oim']['hostname_enabled']
 
 - name: Check if Pulp configuration file exists
   ansible.builtin.stat:
@@ -57,39 +56,41 @@
   register: pulp_status_output
   failed_when: false
 
+# - pause: 
+
 - name: Check if track file exists
   ansible.builtin.stat:
     path: "{{ track_file_path }}"
   register: file_check
 
 - name: Tasks to generate pulp crt
-  when: >
-    (
-      (hostvars['oim']['pulp_container_status'] == 'running') and
-      (pulp_status_output.rc != 0) and
-      (not file_check.stat.exists)
-    ) or
-    (
-      (hostvars['oim']['pulp_container_status'] == 'running') and
-      (pulp_status_output.rc == 0) and
-      (not file_check.stat.exists)
-    ) or
-    (
-      (pulp_status_output.rc != 0) and
-      (not file_check.stat.exists)
-    )
+  # when: >
+  #   (
+  #     (hostvars['oim']['pulp_container_status'] == 'running') and
+  #     (pulp_status_output.rc != 0) and
+  #     (not file_check.stat.exists)
+  #   ) or
+  #   (
+  #     (hostvars['oim']['pulp_container_status'] == 'running') and
+  #     (pulp_status_output.rc == 0) and
+  #     (not file_check.stat.exists)
+  #   ) or
+  #   (
+  #     (pulp_status_output.rc != 0) and
+  #     (not file_check.stat.exists)
+  #   )
   block:
     - name: Set cert_san fact based on hostname
       ansible.builtin.set_fact:
         cert_san: subjectAltName=IP:{{ cert_san_ip }},DNS:{{ pulp_server_ip }},DNS:pulp,DNS:localhost
-      when: hostvars['oim']['hostname_enabled']
-      no_log: true
+      # when: hostvars['oim']['hostname_enabled']
+      # no_log: true
 
-    - name: Set cert_san fact based on IP
-      ansible.builtin.set_fact:
-        cert_san: subjectAltName=IP:{{ pulp_server_ip }},DNS:pulp,DNS:localhost
-      when: not hostvars['oim']['hostname_enabled']
-      no_log: true
+    # - name: Set cert_san fact based on IP
+    #   ansible.builtin.set_fact:
+    #     cert_san: subjectAltName=IP:{{ pulp_server_ip }},DNS:pulp,DNS:localhost
+      # when: not hostvars['oim']['hostname_enabled']
+      # no_log: true
 
     - name: Generating Pulp SSL Certificate
       ansible.builtin.command:
