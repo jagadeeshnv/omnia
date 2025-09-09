@@ -13,14 +13,6 @@
 #  limitations under the License.
 
 ---
-##########################
-#TODO temp
-pulp_password: "dell"
-pulp_protocol_https: true
-oim_shared_path: /data
-selinux_option: ":Z"
-##########################
-
 shared_storage_path: "{{ oim_shared_path }}/omnia"
 pulp_shared_path: "{{ shared_storage_path }}/pulp"
 pulp_logs_dir: "{{ oim_shared_path }}/omnia/log/pulp"
@@ -41,6 +33,13 @@ arg_list:
   - "-e PULP_GUNICORN_TIMEOUT=30"
   - "-e PULP_API_WORKERS_MAX_REQUESTS=1000"
   - "-e PULP_API_WORKERS_MAX_REQUESTS_JITTER=50"
+pulp_env_arg_list:
+  - "PULP_WORKERS=10"
+  - "PULP_API_WORKERS=10"
+  - "PULP_CONTENT_WORKERS=10"
+  - "PULP_GUNICORN_TIMEOUT=30"
+  - "PULP_API_WORKERS_MAX_REQUESTS=1000"
+  - "PULP_API_WORKERS_MAX_REQUESTS_JITTER=50"  
 pulp_deployed_msg: "The {{ pulp_container_name }} container has been successfully deployed."
 pulp_deployed_fail_msg:
   The deployment of the {{ pulp_container_name }} container has failed. To resolve this issue,
@@ -72,7 +71,7 @@ volumes_http:
   - "{{ pulp_shared_path }}/pulp_ha:/root/.config/pulp{{ selinux_option }}"
 
 # Usage: deploy_pulp_container_https.yml
-certs_dir: "{{ pulp_shared_path }}/settings/certs"
+certs_dir: "/opt/omnia/pulp/settings/certs"
 pulp_directories_https:
   - { path: "{{ pulp_shared_path }}", mode: "{{ pulp_dir_permissions }}" }
   - { path: "{{ pulp_logs_dir }}", mode: "{{ logs_dir_permission }}" }
@@ -92,9 +91,9 @@ volumes_https:
   - "{{ pulp_shared_path }}/settings/containers:/var/lib/containers{{ selinux_option }}"
   - "{{ shared_storage_path }}/log/pulp:/var/log/pulp{{ selinux_option }}"
   - "{{ pulp_shared_path }}/pulp_ha:/root/.config/pulp{{ selinux_option }}"
-  - "{{ pulp_shared_path }}/nginx/nginx.conf:/etc/nginx/nginx.conf:rw{{ selinux_option | replace(':', ',') }}"
+  - "{{ pulp_shared_path }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro{{ selinux_option | replace(':', ',') }}"
 pulp_container_port_https: "2225"
-pulp_port_https: "2225:2225"
+pulp_port_https: "2225:443"
 
 # Usage: nginx_conf.j2
 nginx_template_vars:
@@ -137,7 +136,7 @@ generate_cert_cmd: >
   -subj "/CN={{ pulp_server_ip }}"
   -addext {{ cert_san }}
 
-pulp_cert_src: "{{ pulp_shared_path }}/settings/certs/pulp_webserver.crt"
+pulp_cert_src: "/opt/omnia/pulp/settings/certs/pulp_webserver.crt"
 ca_trust_path: "/etc/pki/ca-trust/source/anchors/"
 
 # Usage: reload_pulp_nginx.yml

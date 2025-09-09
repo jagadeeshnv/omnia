@@ -13,8 +13,5 @@
 #  limitations under the License.
 
 ---
-- name: Read input
-  ansible.builtin.include_vars: "/opt/omnia/input/project_default/local_repo_config.yml"
-
 - name: Deploy pulp container tasks
   ansible.builtin.include_tasks: deployment_prereq.yml

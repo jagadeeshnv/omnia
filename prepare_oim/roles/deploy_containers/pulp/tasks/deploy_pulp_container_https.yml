@@ -32,6 +32,10 @@
     dest: "{{ settings_py_path }}"
     mode: "{{ pulp_dir_permissions }}"
 
+- debug:
+    var: selinux_option
+# - pause:
+
 - name: Deploy Pulp container and check deployment status
   block:
     # - name: Deploy the Pulp container
@@ -56,18 +60,29 @@
 
     - name: Create quadlet file
       ansible.builtin.template:
-        src: "quadlet.j2"
+        src: "https_quadlet.j2"
         dest: "/etc/containers/systemd/{{ pulp_container_name }}.container"
         mode: "0644"
+      register: quad_out
+
+    - name: Reload daemon if changes
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when: quad_out.changed
 
     - name: Make sure container unit is running
       ansible.builtin.systemd_service:
         state: started
         name: "{{ pulp_container_name }}"
         enabled: true
-        daemon_reload: true
+      no_log: true
 
-    # - pause:
+    - name: Restart pulp container
+      ansible.builtin.systemd_service:
+        state: restarted
+        name: "{{ pulp_container_name }}"
+      when: quad_out.changed
+      no_log: true
 
     - name: Check if Pulp container is running after deployment
       containers.podman.podman_container_info:
