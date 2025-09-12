@@ -54,9 +54,6 @@
 - name: Ensure munge key is generated
   ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}munge.key"
 
-- name: Generate ctld
-  ansible.builtin.set_fact:
-
 - name: Slurm dict ops
   ansible.builtin.set_fact:
     slurm_conf_dict: "{{ __slurm_default_config | ansible.builtin.combine(slurm_config | default({})) }}"
@@ -79,5 +76,17 @@
     mode: "{{ conf_file_mode }}"
   loop:
     - slurm
-    - dbd
+    - slurmdbd
     - cgroup
+
+- name: Generate slurmd opts for Configless
+  ansible.builtin.set_fact:
+    conf_server: "--conf-server {{ ctld_list | map('regex_replace', '$', ':' ~ (slurm_conf_dict['SlurmctldPort'] | string)) | join(',') }}"
+
+- name: Create slurm.conf for ctld only
+  ansible.builtin.template:
+    src: "slurmd.service.j2"
+    dest: "{{ slurm_config_path }}slurmd.service"
+    owner: "{{ root_user }}"
+    group: "{{ root_group }}"
+    mode: "{{ conf_file_mode }}"

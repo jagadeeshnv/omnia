@@ -216,7 +216,7 @@ __slurm_conf_keys:
 mpi: {}
 cgroup: {}
 __cgroup_default_config:
-  CgroupAutomount: true
+  # CgroupAutomount: true
   CgroupPlugin: autodetect
   ConstrainCores: true
   ConstrainDevices: true
@@ -239,13 +239,14 @@ __slurm_default_config:
   JobAcctGatherFrequency: 30
   SelectType: select/linear
   SlurmctldLogFile: "{{ share_prefix }}var/log/slurmctld.log"
-  SlurmdLogFile: "{{ share_prefix }}var/log/slurmd.log"
+  SlurmdLogFile: "{{ share_prefix }}%n/var/log/slurmd.log"
   SlurmctldPidFile: /var/run/slurmctld.pid
   SlurmdPidFile: /var/run/slurmd.pid
   AuthType: auth/munge
   CredType: cred/munge
   SlurmctldTimeout: 120
   SlurmdTimeout: 300
+  Epilog: "/etc/slurm/epilog.d/logout_user.sh"
 __slurm_dbd_default_config:
   AuthType: auth/munge
   LogFile: "{{ share_prefix }}var/log/slurmdbd.log"

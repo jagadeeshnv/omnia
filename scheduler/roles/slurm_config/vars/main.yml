@@ -15,10 +15,11 @@
 # TODO to read hostnames from source 
 ctld_list:
   - node1
+  - node3
 cmpt_list:
   - node2
-login_list:
-  - node3
+# login_list:
+#   - node3
 dbd_list:
   - node1
 
@@ -73,55 +74,10 @@ munge_dir_mode: "0700"
 common_mode: "0755"
 slurm_dbd_mode: "0600"
 slurm_db_cnf_mode: "0600"
-common_packages:
-  RedHat:
-    - firewalld
-    - python3-firewall
-munge_packages:
-  RedHat:
-    - munge
-slurm_controller_packages:
-  RedHat:
-    - slurm-slurmctld
-slurm_compute_packages:
-  RedHat:
-    - slurm-slurmd
-slurm_login_packages:
-  RedHat:
-    - slurm
-slurm_dbd_packages:
-  RedHat:
-    - slurm-slurmdbd
-db_packages:
-  RedHat:
-    mysql:
-      - python3-PyMySQL
-      - mysql-server
-    mariadb:
-      - python3-PyMySQL
-      - mariadb-server
+
 hosts_file_dest: "/etc/hosts"
 hosts_file_mode: "0644"
-
-# messages
-hosts_update_fail_msg: "Failed to update hosts file with node details.
- Remove unreachable IP addresses from slurm_node or login_node group of inventory and re-run the playbook."
-inv_validation_fail_msg: "Failed. slurm_control_node and slurm_node groups should be defined in inventory and should have at least one node provided."
-intersect_validation_fail_msg: "Failed. Node mentioned in slurm_control_node group should not be part of slurm_node or login_node group"
 
 # Usage: install_utils_packages.yml
 utils_support: "{{ hostvars['localhost']['utils_support'] }}"
 software_config_json_file: "{{ input_project_dir }}/software_config.json"
-utils_packages_file: "{{ input_project_dir }}/config/{{ software_config.cluster_os_type }}/{{ software_config.cluster_os_version }}/utils.json"
-path_edit_msg: "Editing the bashrc failed, please manually source the /etc/environment for slurm"
-slurm_support_msg: "Slurm is not added in software_config, hence skipping slurm deployment"
-share_unavailable_msg: "Slurm install type is nfs_share, but share_path not available, hence skipping slurm deployment"
-
-# Usage: slurm-pam
-enable_slurm_pam: true
-pam_sshd_path: /etc/pam.d/sshd
-pam_sshd_regexp: "^account    required"
-pam_sshd_config_compute: "account    required     pam_slurm_adopt.so action_no_jobs=deny"
-slurm_pam_packages:
-  RedHat:
-    - slurm-pam_slurm
