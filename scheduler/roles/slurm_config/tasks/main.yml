@@ -53,6 +53,7 @@
     - "{{ slurm_config_path }}etc"
     - "{{ slurm_config_path }}etc/munge"
     - "{{ slurm_config_path }}etc/slurm"
+    - "{{ slurm_config_path }}etc/slurm/epilog.d"
     - "{{ slurm_config_path }}etc/my.cnf.d"
     - "{{ slurm_config_path }}var"
     - "{{ slurm_config_path }}var/lib"
@@ -100,6 +101,14 @@
   ansible.builtin.template:
     src: "mariadb-server.cnf.j2"
     dest: "{{ slurm_config_path }}etc/my.cnf.d/mariadb-server.cnf"
+    owner: "{{ root_user }}"
+    group: "{{ root_group }}"
+    mode: "{{ conf_file_mode }}"
+
+- name: Create epilog script
+  ansible.builtin.template:
+    src: "logout_user.sh.j2"
+    dest: "{{ slurm_config_path }}etc/slurm/epilog.d/logout_user.sh"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
