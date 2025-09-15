@@ -36,6 +36,7 @@
   hosts: localhost
   any_errors_fatal: true
   roles:
+    # - role: ../storage/roles/nfs_client
     - role: slurm_config
       vars: 
         slurm_config:

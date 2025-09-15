@@ -15,16 +15,19 @@
 - name: Include variable file omnia_config.yml
   ansible.builtin.include_vars: "{{ input_project_dir }}/omnia_config.yml"
 
-- name: Include storage vars
-  ansible.builtin.include_vars: "{{ input_project_dir }}/storage_config.yml"
+# - name: Include share_path from the nfs storage
+#   ansible.builtin.include_tasks: storage.yml
 
-- name: Set facts for slurm
-  ansible.builtin.set_fact:
-    nfs_storage_name: "{{ slurm_cluster[0].nfs_storage_name }}"
+- name: Get the slurm hostnames
+  ansible.builtin.include_tasks: read_slurm_hostnames.yml
 
-- name: Read the slurm mount point
+# - name: Mount facts items to dict
+#   ansible.builtin.set_fact:
+#     mounted_dict: "{{ ansible_mounts | items2dict(key_name='mount', value_name='device') }}"
+
+- name: Core mounted path will be reused # TODO: mount on OIM
   ansible.builtin.set_fact:
-    share_path: "{{ (nfs_client_params | selectattr('nfs_name', 'equalto', nfs_storage_name) | first).client_share_path }}"
+    share_path: "/opt/omnia"
 
 - name: Set facts for slurm
   ansible.builtin.set_fact:
@@ -40,19 +43,33 @@
 
 - name: Create the slurm directory on share
   ansible.builtin.file:
-    path: "{{ slurm_config_path }}"
+    path: "{{ item }}"
     state: directory
     owner: root
     group: root
     mode: "{{ common_mode }}"
+  loop:
+    - "{{ slurm_config_path }}"
+    - "{{ slurm_config_path }}etc"
+    - "{{ slurm_config_path }}etc/munge"
+    - "{{ slurm_config_path }}etc/slurm"
+    - "{{ slurm_config_path }}etc/my.cnf.d"
+    - "{{ slurm_config_path }}var"
+    - "{{ slurm_config_path }}var/lib"
+    - "{{ slurm_config_path }}var/lib/mysql"
+    - "{{ slurm_config_path }}var/log"
+    - "{{ slurm_config_path }}var/log/mariadb"
+    - "{{ slurm_config_path }}var/log/slurm"
+    - "{{ slurm_config_path }}var/log/spool"
 
 - name: Check if munge key exists
   ansible.builtin.stat:
-    path: "{{ slurm_config_path }}/munge.key"
+    path: "{{ slurm_config_path }}etc/munge/munge.key"
   register: munge_present
 
 - name: Ensure munge key is generated
-  ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}munge.key"
+  ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}etc/munge/munge.key"
+  when: not munge_present.stat.exists
 
 - name: Slurm dict ops
   ansible.builtin.set_fact:
@@ -70,7 +87,7 @@
 - name: Create slurm.conf for ctld only
   ansible.builtin.template:
     src: "{{ item }}.conf.j2"
-    dest: "{{ slurm_config_path }}{{ item }}.conf"
+    dest: "{{ slurm_config_path }}etc/slurm/{{ item }}.conf"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
@@ -79,14 +96,30 @@
     - slurmdbd
     - cgroup
 
+- name: Create mariadb cnf
+  ansible.builtin.template:
+    src: "mariadb-server.cnf.j2"
+    dest: "{{ slurm_config_path }}etc/my.cnf.d/mariadb-server.cnf"
+    owner: "{{ root_user }}"
+    group: "{{ root_group }}"
+    mode: "{{ conf_file_mode }}"
+
 - name: Generate slurmd opts for Configless
   ansible.builtin.set_fact:
     conf_server: "--conf-server {{ ctld_list | map('regex_replace', '$', ':' ~ (slurm_conf_dict['SlurmctldPort'] | string)) | join(',') }}"
 
-- name: Create slurm.conf for ctld only
+- name: Create slurmd service file for configless mode
   ansible.builtin.template:
     src: "slurmd.service.j2"
     dest: "{{ slurm_config_path }}slurmd.service"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
+
+- name: Mount facts items to dict
+  ansible.builtin.set_fact:
+    mounted_dict: "{{ ansible_mounts | items2dict(key_name='mount', value_name='device') }}"
+
+- name: Get the slurm NFS path
+  ansible.builtin.debug:
+    msg: "The slurm NFS path is {{ mounted_dict['/opt/omnia'] }}/slurm"

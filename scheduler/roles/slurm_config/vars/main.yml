@@ -23,6 +23,10 @@ cmpt_list:
 dbd_list:
   - node1
 
+innodb_buffer_pool_size: 1G
+innodb_lock_wait_timeout: 120
+nodes_yaml: "/opt/workdir/nodes/nodes.yaml"
+
 conf_in_nfs: true
 input_project_dir: "{{ hostvars['localhost']['input_project_dir'] }}"
 cluster_name: cluster # TODO: direct load vars omnia_config.yml

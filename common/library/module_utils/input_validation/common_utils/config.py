@@ -79,7 +79,7 @@ input_file_inventory = {
         files["omnia_config"],
         files["high_availability_config"]
     ],
-    "storage": [files["storage_config"]],
+    "storage": [files["storage_config"], files["omnia_config"]],
     "prepare_oim": [
         files["network_spec"],
         files["functional_groups_config"]

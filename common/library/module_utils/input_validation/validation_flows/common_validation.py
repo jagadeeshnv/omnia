@@ -21,7 +21,7 @@ import yaml
 import ipaddress
 import subprocess
 from ast import literal_eval
-import ansible.module_utils.input_validation.common_utils.data_fetch as fetch
+import ansible.module_utils.input_validation.common_utils.data_fetch as get
 from ansible.module_utils.input_validation.validation_flows import csi_driver_validation
 import ansible.module_utils.input_validation.common_utils.data_validation as validate
 
@@ -35,7 +35,7 @@ from ansible.module_utils.input_validation.common_utils import (
 from ansible.module_utils.input_validation.validation_flows import scheduler_validation
 from ansible.module_utils.local_repo.software_utils import (
     load_json,
-    load_yaml,
+    set_version_variables,
     get_subgroup_dict,
     get_software_names,
     get_json_file_path
@@ -98,6 +98,15 @@ def validate_software_config(
                     )
                 )
 
+    iso_file_path = data.get("iso_file_path", "")
+    not_valid_iso_msg = validation_utils.verify_iso_file(
+        iso_file_path, cluster_os_type, cluster_os_version
+    )
+    if not_valid_iso_msg:
+        errors.append(
+            create_error_msg(
+                "iso_file_path", iso_file_path, not_valid_iso_msg))
+
     #software groups and subgroups l2 validation
     # Check for the additional software field
     if "additional_software" in data:
@@ -107,11 +116,11 @@ def validate_software_config(
         extensions = config.extensions
         fname = "additional_software"
         schema_file_path = schema_base_file_path + "/" + fname + extensions['json']
-        json_files = fetch.files_recursively(omnia_base_dir + "/" + project_name, extensions['json'])
+        json_files = get.files_recursively(omnia_base_dir + "/" + project_name, extensions['json'])
         json_files_dic = {}
 
         for file_path in json_files:
-            json_files_dic.update({fetch.file_name_from_path(file_path): file_path})
+            json_files_dic.update({get.file_name_from_path(file_path): file_path})
         new_file_path = json_files_dic.get("additional_software.json", None)
 
         # Validate the schema of the input file (L1)
@@ -168,45 +177,51 @@ def validate_software_config(
         errors.extend(additional_software_errors)
 
     # create the subgroups and softwares dictionary with version details
-    subgroup_dict, _ = get_subgroup_dict(data)
+    software_json_data = load_json(input_file_path)
+    subgroup_dict, _ = get_subgroup_dict(software_json_data)
+
+    # mismatches = validate_versions(software_json_data, config.expected_versions)
+    # if mismatches:
+    #     for msg in mismatches:
+    #         errors.append(
+    #             create_error_msg(
+    #                 "Validation Error: ","Version Mismatch found at" , msg
+    #                 )
+    #             )
+
     # check if the corresponding json files for softwares and subgroups exists in config folder
+    software_list = get_software_names(input_file_path)
     validation_results = []
     failures = []
     fail_data = []
-
-    roles_config_file_path = create_file_path(input_file_path, file_names["roles_config"])
-    roles_config_dict = load_yaml(roles_config_file_path)
-    def_archs = list({x["architecture"] for x in roles_config_dict["Groups"].values()})
-
-    for software_pkg in data['softwares']:
-        software = software_pkg['name']
-        arch_list = software_pkg.get('arch', def_archs)
-        json_paths = []
-        for arch in arch_list:
-            json_paths.append(get_json_file_path(
-                software, cluster_os_type, cluster_os_version, input_file_path, arch))
-        for json_path in json_paths:
-            # Check if json_path is None or if the JSON syntax is invalid
-            if not json_path:
-                errors.append(
-                    create_error_msg(
-                        "Validation Error: ", software,
-                        f"is present in software_config.json. JSON file not found: {software}.json"
-                    )
+    for software in software_list:
+        json_path = get_json_file_path(
+            software, cluster_os_type, cluster_os_version, input_file_path
+        )
+        # Check if json_path is None or if the JSON syntax is invalid
+        if json_path is None:
+            errors.append(
+                create_error_msg(
+                    "Validation Error: ", software,
+                    f"is present in software_config.json. JSON file not found: {os.path.dirname(input_file_path)}/config/{cluster_os_type}/{cluster_os_version}/{software}.json"
                 )
-            else:
-                try:
-                    subgroup_softwares = subgroup_dict.get(software, None)
-                    json_data = load_json(json_path)
-                    for subgroup_software in subgroup_softwares:
-                        _, fail_data = validation_utils.validate_softwaresubgroup_entries(
-                            subgroup_software, json_path, json_data, validation_results, failures
-                        )
-
-                except (FileNotFoundError, json.JSONDecodeError) as e:
-                    errors.append(
-                        create_error_msg("Error opening or reading JSON file:", json_path, str(e))
+            )
+        else:
+            try:
+                subgroup_softwares = subgroup_dict.get(software, None)
+                # for each subgroup for a software check for corresponding entry in software.json
+                # eg: for amd the amd.json should contain both amd and rocm entries
+                with open(json_path, "r") as file:
+                    json_data = json.load(file)
+                for subgroup_software in subgroup_softwares:
+                    _, fail_data = validation_utils.validate_softwaresubgroup_entries(
+                        subgroup_software, json_path, json_data, validation_results, failures
                     )
+
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                errors.append(
+                    create_error_msg("Error opening or reading JSON file:", json_path, str(e))
+                )
 
     if fail_data:
         errors.append(
@@ -226,7 +241,6 @@ def is_version_valid(actual_version, expected):
 
 def validate_versions(data, expected):
     mismatches = []
-
     # Validate top-level 'softwares'
     for sw in data.get("softwares", []):
         name = sw.get("name")
@@ -367,11 +381,17 @@ def validate_security_config(
     )
     software_list = get_software_names(software_config_json)
     authentication_type = ""
-    required = {"openldap"}
+    required = {"openldap","freeipa"}
 
-    matches = [value for value in required if value in software_list]
-    if matches:
-        authentication_type = matches[0]
+    matches = required.intersection(software_list)
+    if len(matches) == 2:
+        errors.append(
+                create_error_msg(authentication_type,
+                                 "software",
+                                 en_us_validation_msg.FREEIPA_AND_OPENLDAP_TRUE_FAIL_MSG)
+            )
+    elif matches:
+        authentication_type = next(iter(matches))
         logger.info(f"{authentication_type}: "
                     f"{en_us_validation_msg.AUTHENTICATION_SYSTEM_SUCCESS_MSG}")
     else:
@@ -385,6 +405,10 @@ def validate_security_config(
             "openldap_organizational_unit",
         ]
         validate_openldap_input_params(authentication_type, mandatory_fields, data, errors, logger)
+
+    elif authentication_type == "freeipa":
+        mandatory_fields = ["domain_name","realm_name"]
+        validate_freeapi_input_params(authentication_type, mandatory_fields, data, errors, logger)
 
     return errors
 
@@ -420,6 +444,82 @@ def validate_network_config(
 
     return errors
 
+def get_matching_clusters_for_nfs(nfs_name, omnia_config):
+    """
+    Returns a dict of matching clusters for the given NFS name.
+    """
+    matching_clusters = {}
+
+    # Service k8s
+    for svc in omnia_config.get("service_k8s_cluster", []):
+        if (
+            svc.get("nfs_storage_name") == nfs_name
+            and svc.get("deployment") is True
+        ):
+            matching_clusters["service_k8s_cluster"] = svc
+
+    # Compute k8s
+    for comp in omnia_config.get("compute_k8s_cluster", []):
+        if (
+            comp.get("nfs_storage_name") == nfs_name
+            and comp.get("deployment") is True
+        ):
+            matching_clusters["compute_k8s_cluster"] = comp
+
+    # Slurm
+    for slurm in omnia_config.get("slurm_cluster", []):
+        if slurm.get("nfs_storage_name") == nfs_name:
+            matching_clusters["slurm_cluster"] = slurm
+
+    return matching_clusters
+
+def validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors):
+    """
+    Validate UCX/OpenMPI dependencies:
+    - If UCX/OpenMPI + Slurm → slurm cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + service_k8s → service_k8s cluster must be in matching_clusters
+    - If UCX/OpenMPI + no Slurm + compute_k8s → compute_k8s cluster must be in matching_clusters
+    """
+
+    has_ucx_or_openmpi = (
+        contains_software(softwares, "ucx") or contains_software(softwares, "openmpi")
+    )
+
+    if not has_ucx_or_openmpi:
+        return  # No UCX/OpenMPI → no dependency check
+
+    # Case 1: Slurm required
+    if contains_software(softwares, "slurm"):
+        if "slurm_cluster" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "slurm_cluster",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 2: Service K8s required
+    elif contains_software(softwares, "service_k8s"):
+        if "service_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "service_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
+
+    # Case 3: Compute K8s required
+    elif contains_software(softwares, "compute_k8s"):
+        if "compute_k8s" not in matching_clusters:
+            errors.append(
+                create_error_msg(
+                    "OpenMPI/UCX requires a corresponding",
+                    "compute_k8s",
+                    "entry in omnia_config.yml with deployment enabled."
+                )
+            )
 
 def validate_storage_config(
     input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
@@ -441,6 +541,13 @@ def validate_storage_config(
     """
     errors = []
     software_config_file_path = create_file_path(input_file_path, file_names["software_config"])
+    omnia_config_file_path = create_file_path(input_file_path, file_names["omnia_config"])
+
+    #read contents of omnia_config file in a variable
+    omnia_config_json = validation_utils.load_yaml_as_json(
+        omnia_config_file_path, omnia_base_dir, project_name, logger, module
+    )
+
     software_config_json = None
     with open(software_config_file_path, "r", encoding="utf-8") as schema_file:
         software_config_json = json.load(schema_file)
@@ -451,10 +558,7 @@ def validate_storage_config(
                                            en_us_validation_msg.BEEGFS_VERSION_FAIL_MSG))
 
     allowed_options = {"nosuid", "rw", "sync", "hard", "intr"}
-    slurm_share_val = False
-    k8s_share_val = False
-    multiple_slurm_share_val = False
-    multiple_k8s_share_val = False
+
     for nfs_client_params in data["nfs_client_params"]:
         client_mount_options = nfs_client_params["client_mount_options"]
         client_mount_options_set = set(client_mount_options.split(","))
@@ -468,55 +572,70 @@ def validate_storage_config(
                 )
             )
 
-        slurm_share_raw = str(nfs_client_params.get("slurm_share", "false")).strip().lower()
-        if slurm_share_raw == "true":
-            if not slurm_share_val:
-                slurm_share_val = True
-            else:
-                multiple_slurm_share_val = True
+        nfs_strg_name = nfs_client_params["nfs_name"]
+        matching_clusters = get_matching_clusters_for_nfs(nfs_strg_name, omnia_config_json)
 
-        k8s_share_raw = str(nfs_client_params.get("k8s_share", "false")).strip().lower()
-        if k8s_share_raw == "true":
-            if not k8s_share_val:
-                k8s_share_val = True
-            else:
-                multiple_k8s_share_val = True
-
-    if (contains_software(softwares, "slurm") and not slurm_share_val) or multiple_slurm_share_val:
-        errors.append(
-            create_error_msg(
-                "slurm_share",
-                slurm_share_val,
-                en_us_validation_msg.SLURM_SHARE_FAIL_MSG
-            )
-        )
-
-    if (contains_software(softwares, "k8s") and not k8s_share_val) or multiple_k8s_share_val:
-        errors.append(
-            create_error_msg(
-                "k8s_share",
-                k8s_share_val,
-                en_us_validation_msg.K8S_SHARE_FAIL_MSG
-            )
-        )
-
-    if contains_software(softwares, "ucx") or contains_software(softwares, "openmpi"):
-        if not k8s_share_val or not slurm_share_val:
+        if not matching_clusters:
             errors.append(
                 create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.BENCHMARK_TOOLS_FAIL_MSG
+                    "For the mentioned",
+                    nfs_strg_name,
+                    f"in storage_config.yml, no matching cluster found in omnia_config.yml "
+                    f"with deployment enabled for NFS '{nfs_strg_name}'."
                 )
             )
-        elif multiple_slurm_share_val or multiple_k8s_share_val:
-            errors.append(
-                create_error_msg(
-                    "nfs_client_params",
-                    "",
-                    en_us_validation_msg.MULT_SHARE_FAIL_MSG
-                )
-            )
+        else: # Only validate if clusters are found
+            validate_openmpi_ucx_dependencies(matching_clusters, softwares, errors)
+
+    #     slurm_share_raw = str(nfs_client_params.get("slurm_share", "false")).strip().lower()
+    #     if slurm_share_raw == "true":
+    #         if not slurm_share_val:
+    #             slurm_share_val = True
+    #         else:
+    #             multiple_slurm_share_val = True
+
+    #     k8s_share_raw = str(nfs_client_params.get("k8s_share", "false")).strip().lower()
+    #     if k8s_share_raw == "true":
+    #         if not k8s_share_val:
+    #             k8s_share_val = True
+    #         else:
+    #             multiple_k8s_share_val = True
+
+    # if (contains_software(softwares, "slurm") and not slurm_share_val) or multiple_slurm_share_val:
+    #     errors.append(
+    #         create_error_msg(
+    #             "slurm_share",
+    #             slurm_share_val,
+    #             en_us_validation_msg.SLURM_SHARE_FAIL_MSG
+    #         )
+    #     )
+
+    # if (contains_software(softwares, "k8s") and not k8s_share_val) or multiple_k8s_share_val:
+    #     errors.append(
+    #         create_error_msg(
+    #             "k8s_share",
+    #             k8s_share_val,
+    #             en_us_validation_msg.K8S_SHARE_FAIL_MSG
+    #         )
+    #     )
+
+    # if contains_software(softwares, "ucx") or contains_software(softwares, "openmpi"):
+    #     if not k8s_share_val or not slurm_share_val:
+    #         errors.append(
+    #             create_error_msg(
+    #                 "nfs_client_params",
+    #                 "",
+    #                 en_us_validation_msg.BENCHMARK_TOOLS_FAIL_MSG
+    #             )
+    #         )
+    #     elif multiple_slurm_share_val or multiple_k8s_share_val:
+    #         errors.append(
+    #             create_error_msg(
+    #                 "nfs_client_params",
+    #                 "",
+    #                 en_us_validation_msg.MULT_SHARE_FAIL_MSG
+    #             )
+    #         )
 
     beegfs_mounts = data["beegfs_mounts"]
     if beegfs_mounts != "/mnt/beegfs":
@@ -533,7 +652,7 @@ def validate_storage_config(
     return errors
 
 
-# for  passwordless_ssh_config.yml this is run
+# for k8s_access_config.yml and passwordless_ssh_config.yml this is run
 def validate_usernames(
     input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
 ):
@@ -554,6 +673,16 @@ def validate_usernames(
     """
     errors = []
 
+    k8s_access_config_file_path = create_file_path(
+        input_file_path, file_names["k8s_access_config"]
+    )
+    k8s_access_config_json = validation_utils.load_yaml_as_json(
+        k8s_access_config_file_path,
+        omnia_base_dir,
+        project_name,
+        logger,
+        module,
+    )
     passwordless_ssh_config_file_path = create_file_path(
         input_file_path, file_names["passwordless_ssh_config"]
     )
@@ -565,12 +694,14 @@ def validate_usernames(
         module,
     )
 
+    k8s_user_name = k8s_access_config_json["user_name"]
     pw_ssh_user_name = passwordless_ssh_config_json["user_name"]
 
+    k8s_user_name = k8s_user_name.split(",")
     pw_ssh_user_name = pw_ssh_user_name.split(",")
 
     # Combine all usernames into a single list
-    all_usernames = pw_ssh_user_name
+    all_usernames = k8s_user_name + pw_ssh_user_name
 
     # Create a dictionary to store the count of each username
     username_count = {}
@@ -773,6 +904,29 @@ def validate_login_node_security_config(
             validate_smtp_server(data, errors, logger)
         validate_allowed_services(data, errors, logger)
     return errors
+
+
+def validate_site_config(
+    input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
+):
+    """
+    Validates the site configuration.
+
+    Args:
+        input_file_path (str): The path to the input file.
+        data (dict): The data to be validated.
+        logger (Logger): A logger instance.
+        module (Module): A module instance.
+        omnia_base_dir (str): The base directory of the Omnia configuration.
+        module_utils_base (str): The base directory of the module utils.
+        project_name (str): The name of the project.
+
+    Returns:
+        list: A list of errors encountered during validation.
+    """
+    errors = []
+    return errors
+
 
 def validate_server_spec(
     input_file_path, data, logger, module, omnia_base_dir, module_utils_base, project_name
@@ -1276,4 +1430,3 @@ def validate_additional_software(
                 )
             )
     return errors
-
