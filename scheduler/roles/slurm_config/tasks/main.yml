@@ -15,19 +15,19 @@
 - name: Include variable file omnia_config.yml
   ansible.builtin.include_vars: "{{ input_project_dir }}/omnia_config.yml"
 
-# - name: Include share_path from the nfs storage
-#   ansible.builtin.include_tasks: storage.yml
+- name: Include storage vars
+  ansible.builtin.include_vars: "{{ input_project_dir }}/storage_config.yml"
+
+- name: Set facts for slurm
+  ansible.builtin.set_fact:
+    nfs_storage_name: "{{ slurm_cluster[0].nfs_storage_name }}"
+
+- name: Read the slurm mount point
+  ansible.builtin.set_fact:
+    share_path: "{{ (nfs_client_params | selectattr('nfs_name', 'equalto', nfs_storage_name) | first).client_share_path }}"
 
 - name: Get the slurm hostnames
   ansible.builtin.include_tasks: read_slurm_hostnames.yml
-
-# - name: Mount facts items to dict
-#   ansible.builtin.set_fact:
-#     mounted_dict: "{{ ansible_mounts | items2dict(key_name='mount', value_name='device') }}"
-
-- name: Core mounted path will be reused # TODO: mount on OIM
-  ansible.builtin.set_fact:
-    share_path: "/opt/omnia"
 
 - name: Set facts for slurm
   ansible.builtin.set_fact:
@@ -62,6 +62,7 @@
     - "{{ slurm_config_path }}var/log/mariadb"
     - "{{ slurm_config_path }}var/log/slurm"
     - "{{ slurm_config_path }}var/log/spool"
+    - "{{ slurm_config_path }}cloud_init_out" #TODO: cloud inits
 
 - name: Check if munge key exists
   ansible.builtin.stat:
@@ -131,4 +132,11 @@
 
 - name: Get the slurm NFS path
   ansible.builtin.debug:
-    msg: "The slurm NFS path is {{ mounted_dict['/opt/omnia'] }}/slurm"
+    msg: "The slurm NFS path is {{ mounted_dict[share_path] }}/slurm"
+
+- name: NFS path for cloud init
+  ansible.builtin.set_fact: 
+    cloud_init_nfs_path: "{{ mounted_dict[share_path] }}/slurm"
+
+- name: Generate cloud init
+  ansible.builtin.include_tasks: cloud_inits.yml

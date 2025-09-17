@@ -25,7 +25,10 @@ dbd_list:
 
 innodb_buffer_pool_size: 1G
 innodb_lock_wait_timeout: 120
+# TODO tmp
 nodes_yaml: "/opt/workdir/nodes/nodes.yaml"
+cloud_init_out: "{{ slurm_config_path }}cloud_init_out"
+ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBaXuonlL1BsAl/JgEfRhnl+rF+dhjdMUHQJro5qluSI root@omnia_core"
 
 conf_in_nfs: true
 input_project_dir: "{{ hostvars['localhost']['input_project_dir'] }}"

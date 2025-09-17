@@ -12,39 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Set_fact for fetch omnia config credentials
+
+- name: Set tag for input validator
   hosts: localhost
   connection: local
   tasks:
-    - name: Set dynamic run tags including k8s
+    - name: Set dynamic run tags - 'storage'
       ansible.builtin.set_fact:
-        omnia_run_tags: "{{ (ansible_run_tags | default([]) + ['slurm', 'storage']) | unique }}"
+        omnia_run_tags: "{{ (ansible_run_tags | default([]) + ['storage']) | unique }}"
         cacheable: true
+      when: not (hostvars['127.0.0.1']['config_file_status'] | default(false) | bool)
 
-- name: Invoke get_config_credentials.yml
-  ansible.builtin.import_playbook: ../utils/credential_utility/get_config_credentials.yml
-  when: not ( hostvars['127.0.0.1']['config_file_status'] | default(false) | bool )
+- name: Invoke validate_config.yml to perform L1 and L2 validations
+  ansible.builtin.import_playbook: ../input_validation/validate_config.yml
+  when: not (hostvars['127.0.0.1']['config_file_status'] | default(false) | bool)
 
 - name: Include input project directory
   ansible.builtin.import_playbook: ../utils/include_input_dir.yml
   when: not ( hostvars['127.0.0.1']['project_dir_status'] | default(false) | bool )
 
-- name: Invoke validate_config.yml to perform L1 and L2 validations for k8s
-  ansible.builtin.import_playbook: ../input_validation/validate_config.yml
-
-- name: Create oim group and provision group
-  ansible.builtin.import_playbook: ../utils/create_container_group.yml
-  vars:
-    oim_group: true
-  tags: always
-
-- name: Slurm ready
-  hosts: oim
+- name: Validate storage input parameters
+  hosts: localhost
+  connection: local
   any_errors_fatal: true
+  tasks:
+    - name: Validate storage input parameters
+      ansible.builtin.include_role:
+        name: storage_validation
+        tasks_from: validation_status_check.yml
+
+- name: Install NFS server on nfs_server_cluster
+  hosts: nfs_server_cluster, nfs_server_local
+  gather_facts: true
   roles:
-    - role: ../storage/roles/nfs_client
-    - role: slurm_config
-      vars: 
-        slurm_config:
-          ReturnToService: 1
+    - nfs_server
 
