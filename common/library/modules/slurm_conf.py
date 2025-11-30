@@ -49,11 +49,9 @@ def parse_slurm_conf(file_path, module):
                 # Split only on the first '=' to allow '=' inside the value
                 key, value = item.split('=', 1)
                 tmp_dict[key.strip()] = value.strip()
-            
             skey = list(tmp_dict.keys())[0]
             if skey not in current_conf:
                 raise Exception(f"Invalid key while parsing {file_path}: {skey}")
-            
             if current_conf[skey] == SlurmParserEnum.S_P_ARRAY or len(tmp_dict) > 1:
                 # TODO hostlist expressions and multiple DEFAULT entries handling
                 if len(tmp_dict) == 1:
@@ -63,7 +61,7 @@ def parse_slurm_conf(file_path, module):
                         slurm_dict.get(first_key, [])) + [first_value]
                 else:
                     slurm_dict[list(tmp_dict.keys())[0]] = list(
-                            slurm_dict.get(list(tmp_dict.keys())[0], [])) + [tmp_dict]
+                        slurm_dict.get(list(tmp_dict.keys())[0], [])) + [tmp_dict]
             else:
                 # TODO handle csv values, currently no definite data type for csv values
                 slurm_dict.update(tmp_dict)
@@ -102,7 +100,7 @@ def slurm_conf_dict_merge(conf_dict_list):
 def run_module():
     module_args = {
         "path": {'type': 'str'},
-        "op": {'type': 'str', 'required': True, 'choices':['f2d', 'd2f', 'merge']},
+        "op": {'type': 'str', 'required': True, 'choices': ['f2d', 'd2f', 'merge']},
         "conf_map": {'type': 'dict', 'default': {}},
         "conf_sources": {'type': 'list', 'elements': 'raw', 'default': []},
         "conf_name": {'type': 'str', 'default': 'slurm'}
