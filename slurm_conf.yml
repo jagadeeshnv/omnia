@@ -10,6 +10,7 @@
         conf_sources:
           - /root/ansible_collections/dell/omnia/slurm_sample_confs/slurm1.conf
           - /root/ansible_collections/dell/omnia/slurm_sample_confs/slurm2.conf
+          - /root/ansible_collections/dell/omnia/slurm_sample_confs/slurm3.conf
       register: conf_out
 
     - name: Print the first elemnt of slurm_dict

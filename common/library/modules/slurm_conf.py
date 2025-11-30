@@ -20,7 +20,6 @@ def read_dict2ini(conf_dict):
                     data.append(f"{k}={item}")
         else:
             data.append(f"{k}={v}")
-
     return data
 
 
@@ -82,11 +81,13 @@ def slurm_conf_dict_merge(conf_dict_list):
                         existing_dict = merged_dict.get(ky, {})
                         inner_dict = existing_dict.get(item.get(ky), {})
                         inner_dict.update(item)
+                        # TODO Partition node combiner logic
                         existing_dict[item.get(ky)] = inner_dict
                         merged_dict[ky] = existing_dict
                     else:
                         existing_list = merged_dict.get(ky, [])
-                        existing_list.append(item)
+                        if item not in existing_list:
+                            existing_list.append(item)
                         merged_dict[ky] = existing_list
             else:
                 merged_dict[ky] = vl
@@ -141,13 +142,11 @@ def run_module():
                     raise Exception(f"Invalid type for conf_source: {type(conf_source)}")
             merged_dict = slurm_conf_dict_merge(conf_dict_list)
             result['slurm_dict'] = merged_dict
+            result['conf_ready_lines'] = read_dict2ini(merged_dict)
     except Exception as e:
         result['failed'] = True
         result['msg'] = str(e)
-
         module.fail_json(msg=str(e))
-
-    # Return the result
     module.exit_json(**result)
 
 
