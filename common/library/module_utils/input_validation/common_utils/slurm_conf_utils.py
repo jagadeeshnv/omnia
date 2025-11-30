@@ -386,3 +386,39 @@ all_confs = {
     "DownNodes": downnodes_options,
     "NodeSet": nodeset_options
 }
+
+import re
+
+_HOSTLIST_RE = re.compile(r'^(?P<prefix>[^\[\]]*)\[(?P<inner>[^\[\]]+)\](?P<suffix>.*)$')
+
+def expand_hostlist(expr):
+    """
+    Expand simple Slurm-style hostlist expressions, e.g.:
+      dev[0-2,5,10-12] -> [dev0, dev1, dev2, dev5, dev10, dev11, dev12]
+    If no brackets, returns [expr].
+    """
+    m = _HOSTLIST_RE.match(expr)
+    if not m:
+        return [expr]
+
+    prefix = m.group("prefix")
+    inner = m.group("inner")
+    suffix = m.group("suffix")
+
+    hosts = []
+    for part in inner.split(','):
+        part = part.strip()
+        if '-' in part:
+            start_s, end_s = part.split('-', 1)
+            width = max(len(start_s), len(end_s))
+            start = int(start_s)
+            end = int(end_s)
+            step = 1 if end >= start else -1
+            for i in range(start, end + step, step):
+                hosts.append(f"{prefix}{str(i).zfill(width)}{suffix}")
+        else:
+            # single index
+            width = len(part)
+            i = int(part)
+            hosts.append(f"{prefix}{str(i).zfill(width)}{suffix}")
+    return hosts

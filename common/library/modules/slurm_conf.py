@@ -59,20 +59,43 @@ def parse_slurm_conf(file_path, module):
                 # TODO hostlist expressions and multiple DEFAULT entries handling
                 if len(tmp_dict) == 1:
                     first_key = list(tmp_dict.keys())[0]
-                    first_value = next(iter(tmp_dict.values()))
+                    first_value = list(tmp_dict.values())[0]
                     slurm_dict[first_key] = list(
                         slurm_dict.get(first_key, [])) + [first_value]
                 else:
                     slurm_dict[list(tmp_dict.keys())[0]] = list(
                             slurm_dict.get(list(tmp_dict.keys())[0], [])) + [tmp_dict]
             else:
+                # TODO handle csv values, currently no definite data type for csv values
                 slurm_dict.update(tmp_dict)
 
     return slurm_dict
 
 
-def slurm_conf_dict_merge(dict_one, dict_two):
-    return dict_one
+def slurm_conf_dict_merge(conf_dict_list):
+    merged_dict = {}
+    for conf_dict in conf_dict_list:
+        for ky, vl in conf_dict.items():
+            if isinstance(vl, list):
+                for item in vl:
+                    if isinstance(item, dict):
+                        existing_dict = merged_dict.get(ky, {})
+                        inner_dict = existing_dict.get(item.get(ky), {})
+                        inner_dict.update(item)
+                        existing_dict[item.get(ky)] = inner_dict
+                        merged_dict[ky] = existing_dict
+                    else:
+                        existing_list = merged_dict.get(ky, [])
+                        existing_list.append(item)
+                        merged_dict[ky] = existing_list
+            else:
+                merged_dict[ky] = vl
+    # flatten the dict
+    merged_dict = {
+        k: list(v.values()) if isinstance(v, dict) else v
+        for k, v in merged_dict.items()
+    }
+    return merged_dict
 
 
 def run_module():
@@ -116,6 +139,8 @@ def run_module():
                     conf_dict_list.append(s_dict)
                 else:
                     raise Exception(f"Invalid type for conf_source: {type(conf_source)}")
+            merged_dict = slurm_conf_dict_merge(conf_dict_list)
+            result['slurm_dict'] = merged_dict
     except Exception as e:
         result['failed'] = True
         result['msg'] = str(e)
