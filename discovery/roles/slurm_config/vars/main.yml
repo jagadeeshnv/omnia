@@ -56,6 +56,7 @@ conf_in_nfs: true
 input_project_dir: "{{ hostvars['localhost']['input_project_dir'] }}"
 cluster_name: cluster # TODO: direct load vars omnia_config.yml
 slurm_uid: 6001
+slurm_gid: 6001
 slurm_user: slurm
 slurm_user_group: slurm
 restart_slurm_services: "{{ hostvars['localhost']['restart_slurm_services'] }}"

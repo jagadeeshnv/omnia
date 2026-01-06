@@ -381,9 +381,12 @@
       runcmd:
         - /usr/local/bin/set-ssh.sh
         - /usr/local/bin/install_nvidia_driver.sh
-        - useradd -mG wheel -p '$6$VHdSKZNm$O3iFYmRiaFQCemQJjhfrpqqV7DdHBi5YpY6Aq06JSQpABPw.3d8PQ8bNY9NuZSmDv7IL/TsrhRJ6btkgKaonT.' testuser
-        - groupadd -r {{ slurm_group_name }}
-        - useradd -r -g {{ slurm_group_name }} -d {{ home_dir }} -s /sbin/nologin {{ user }}
+
+        # slurm user and group
+         - getent group {{ slurm_group_name }} >/dev/null || groupadd -r {{ slurm_group_name }}
+         - groupmod -g {{ slurm_gid }} {{ slurm_group_name }}
+         - getent passwd {{ user }} >/dev/null || useradd -r -g {{ slurm_group_name }} -d {{ home_dir }} -s /sbin/nologin {{ user }}
+         - usermod -u {{ slurm_uid }} {{ user }}
 
         - /usr/local/bin/configure_dirs_and_mounts.sh
         - cp /cert/pulp_webserver.crt /etc/pki/ca-trust/source/anchors && update-ca-trust

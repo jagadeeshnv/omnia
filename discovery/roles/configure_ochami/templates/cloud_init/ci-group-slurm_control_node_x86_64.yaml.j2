@@ -244,9 +244,12 @@
 
       runcmd:
          - /usr/local/bin/set-ssh.sh
-         - useradd -mG wheel -p '$6$VHdSKZNm$O3iFYmRiaFQCemQJjhfrpqqV7DdHBi5YpY6Aq06JSQpABPw.3d8PQ8bNY9NuZSmDv7IL/TsrhRJ6btkgKaonT.' testuser # Required??
-         - groupadd -r {{ slurm_group_name }}
-         - useradd -r -g {{ slurm_group_name }} -d {{ home_dir }} -s /sbin/nologin {{ user }}
+
+        # slurm user and group
+         - getent group {{ slurm_group_name }} >/dev/null || groupadd -r {{ slurm_group_name }}
+         - groupmod -g {{ slurm_gid }} {{ slurm_group_name }}
+         - getent passwd {{ user }} >/dev/null || useradd -r -g {{ slurm_group_name }} -d {{ home_dir }} -s /sbin/nologin {{ user }}
+         - usermod -u {{ slurm_uid }} {{ user }}
 
         # Create directories for nfs and mount all
          - mkdir -p /var/log/slurm /etc/slurm {{ home_dir }} /etc/my.cnf.d /etc/munge /var/lib/mysql /var/log/mariadb /cert /var/log/track /var/lib/packages
