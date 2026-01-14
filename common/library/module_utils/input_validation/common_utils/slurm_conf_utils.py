@@ -1,6 +1,5 @@
-# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>/src/common/read_config.c
-# slurm version - 25.11
-
+# These are the slurm options for version - 25.11
+import re
 from enum import Enum
 
 
@@ -133,7 +132,7 @@ partition_options = {
     "TRESBillingWeights": S_P_STRING,
 }
 
-
+# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>/src/common/read_config.c
 slurm_options = {
     "AccountingStorageBackupHost": S_P_STRING,
     "AccountingStorageEnforce": S_P_STRING,
@@ -144,7 +143,7 @@ slurm_options = {
     "AccountingStoragePort": S_P_UINT16,
     "AccountingStorageTRES": S_P_STRING,
     "AccountingStorageType": S_P_STRING,
-    # {"AccountingStorageUser", S_P_STRING, _defunct_option},
+    # {"AccountingStorageUser": S_P_STRING, _defunct_option,
     "AccountingStoreFlags": S_P_STRING,
     "AccountingStoreJobComment": S_P_BOOLEAN,
     "AcctGatherEnergyType": S_P_STRING,
@@ -176,7 +175,7 @@ slurm_options = {
     "CompleteWait": S_P_UINT16,
     "ControlAddr": S_P_STRING,
     "ControlMachine": S_P_STRING,
-    # {"CoreSpecPlugin", S_P_STRING, _defunct_option},
+    # {"CoreSpecPlugin": S_P_STRING, _defunct_option,
     "CpuFreqDef": S_P_STRING,
     "CpuFreqGovernors": S_P_STRING,
     "CredType": S_P_STRING,
@@ -195,13 +194,13 @@ slurm_options = {
     "EpilogMsgTime": S_P_UINT32,
     "EpilogSlurmctld": S_P_ARRAY,
     "EpilogTimeout": S_P_UINT16,
-    # {"ExtSensorsFreq", S_P_UINT16, _defunct_option},
-    # {"ExtSensorsType", S_P_STRING, _defunct_option},
+    # {"ExtSensorsFreq": S_P_UINT16, _defunct_option,
+    # {"ExtSensorsType": S_P_STRING, _defunct_option,
     "FairShareDampeningFactor": S_P_UINT16,
     "FastSchedule": S_P_UINT16,
     "FederationParameters": S_P_STRING,
     "FirstJobId": S_P_UINT32,
-    # {"GetEnvTimeout", S_P_UINT16, _defunct_option},
+    # {"GetEnvTimeout": S_P_UINT16, _defunct_option,
     "GpuFreqDef": S_P_STRING,
     "GresTypes": S_P_STRING,
     "GroupUpdateForce": S_P_UINT16,
@@ -225,8 +224,8 @@ slurm_options = {
     "JobCompType": S_P_STRING,
     "JobCompUser": S_P_STRING,
     "JobContainerType": S_P_STRING,
-    # {"JobCredentialPrivateKey", S_P_STRING, _defunct_option},
-    # {"JobCredentialPublicCertificate", S_P_STRING, _defunct_option},
+    # {"JobCredentialPrivateKey": S_P_STRING, _defunct_option,
+    # {"JobCredentialPublicCertificate": S_P_STRING, _defunct_option,
     "JobFileAppend": S_P_UINT16,
     "JobRequeue": S_P_UINT16,
     "JobSubmitPlugins": S_P_STRING,
@@ -261,8 +260,8 @@ slurm_options = {
     "OverTimeLimit": S_P_UINT16,
     "PluginDir": S_P_STRING,
     "PlugStackConfig": S_P_STRING,
-    # {"PowerParameters", S_P_STRING, _defunct_option},
-    # {"PowerPlugin", S_P_STRING, _defunct_option},
+    # {"PowerParameters": S_P_STRING, _defunct_option,
+    # {"PowerPlugin": S_P_STRING, _defunct_option,
     "PreemptExemptTime": S_P_STRING,
     "PreemptMode": S_P_STRING,
     "PreemptParameters": S_P_STRING,
@@ -378,16 +377,132 @@ slurm_options = {
     "SlurmctldHost": S_P_ARRAY,
 }
 
+# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>/src/slurmdbd/read_config.c
+slurmdbd_options = {
+    "AllowNoDefAcct": S_P_BOOLEAN,
+    "AllResourcesAbsolute": S_P_BOOLEAN,
+    "ArchiveDir": S_P_STRING,
+    "ArchiveEvents": S_P_BOOLEAN,
+    "ArchiveJobs": S_P_BOOLEAN,
+    "ArchiveResvs": S_P_BOOLEAN,
+    "ArchiveScript": S_P_STRING,
+    "ArchiveSteps": S_P_BOOLEAN,
+    "ArchiveSuspend": S_P_BOOLEAN,
+    "ArchiveTXN": S_P_BOOLEAN,
+    "ArchiveUsage": S_P_BOOLEAN,
+    "AuthAltTypes": S_P_STRING,
+    "AuthAltParameters": S_P_STRING,
+    "AuthInfo": S_P_STRING,
+    "AuthType": S_P_STRING,
+    "CommitDelay": S_P_UINT16,
+    "CommunicationParameters": S_P_STRING,
+    "DbdAddr": S_P_STRING,
+    "DbdBackupHost": S_P_STRING,
+    "DbdHost": S_P_STRING,
+    "DbdPort": S_P_UINT16,
+    "DebugFlags": S_P_STRING,
+    "DebugLevel": S_P_STRING,
+    "DebugLevelSyslog": S_P_STRING,
+    "DefaultQOS": S_P_STRING,
+    "DisableCoordDBD": S_P_BOOLEAN,
+    "DisableArchiveCommands": S_P_BOOLEAN,
+    "HashPlugin": S_P_STRING,
+    "JobPurge": S_P_UINT32,
+    "LogFile": S_P_STRING,
+    "LogTimeFormat": S_P_STRING,
+    "MaxPurgeLimit": S_P_UINT32,
+    "MaxQueryTimeRange": S_P_STRING,
+    "MessageTimeout": S_P_UINT16,
+    "Parameters": S_P_STRING,
+    "PidFile": S_P_STRING,
+    "PluginDir": S_P_STRING,
+    "PrivateData": S_P_STRING,
+    "PurgeEventAfter": S_P_STRING,
+    "PurgeJobAfter": S_P_STRING,
+    "PurgeResvAfter": S_P_STRING,
+    "PurgeStepAfter": S_P_STRING,
+    "PurgeSuspendAfter": S_P_STRING,
+    "PurgeTXNAfter": S_P_STRING,
+    "PurgeUsageAfter": S_P_STRING,
+    "PurgeEventMonths": S_P_UINT32,
+    "PurgeJobMonths": S_P_UINT32,
+    "PurgeStepMonths": S_P_UINT32,
+    "PurgeSuspendMonths": S_P_UINT32,
+    "PurgeTXNMonths": S_P_UINT32,
+    "PurgeUsageMonths": S_P_UINT32,
+    "SlurmUser": S_P_STRING,
+    "StepPurge": S_P_UINT32,
+    "StorageBackupHost": S_P_STRING,
+    "StorageHost": S_P_STRING,
+    "StorageLoc": S_P_STRING,
+    "StorageParameters": S_P_STRING,
+    "StoragePass": S_P_STRING,
+    "StoragePassScript": S_P_STRING,
+    "StoragePort": S_P_UINT16,
+    "StorageType": S_P_STRING,
+    "StorageUser": S_P_STRING,
+    "TCPTimeout": S_P_UINT16,
+    "TLSParameters": S_P_STRING,
+    "TLSType": S_P_STRING,
+    "TrackWCKey": S_P_BOOLEAN,
+    "TrackSlurmctldDown": S_P_BOOLEAN
+}
+
+# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>/src/interfaces/cgroup.c#L332
+cgroup_options = {
+    "CgroupAutomount": S_P_BOOLEAN,
+    "CgroupMountpoint": S_P_STRING,
+    "CgroupSlice": S_P_STRING,
+    "ConstrainCores": S_P_BOOLEAN,
+    "ConstrainRAMSpace": S_P_BOOLEAN,
+    "AllowedRAMSpace": S_P_FLOAT,
+    "MaxRAMPercent": S_P_FLOAT,
+    "MinRAMSpace": S_P_UINT64,
+    "ConstrainSwapSpace": S_P_BOOLEAN,
+    "AllowedSwapSpace": S_P_FLOAT,
+    "MaxSwapPercent": S_P_FLOAT,
+    "MemoryLimitEnforcement": S_P_BOOLEAN,
+    "MemoryLimitThreshold": S_P_FLOAT,
+    "ConstrainDevices": S_P_BOOLEAN,
+    "AllowedDevicesFile": S_P_STRING,
+    "MemorySwappiness": S_P_UINT64,
+    "CgroupPlugin": S_P_STRING,
+    "IgnoreSystemd": S_P_BOOLEAN,
+    "IgnoreSystemdOnFailure": S_P_BOOLEAN,
+    "EnableControllers": S_P_BOOLEAN,
+    "EnableExtraControllers": S_P_STRING,
+    "SignalChildrenProcesses": S_P_BOOLEAN,
+    "SystemdTimeout": S_P_UINT64
+}
+
+# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>/src/plugins/mpi/pmix/mpi_pmix.c#L83
+mpi_options = {
+	"PMIxCliTmpDirBase": S_P_STRING,
+	"PMIxCollFence": S_P_STRING,
+	"PMIxDebug": S_P_UINT32,
+	"PMIxDirectConn": S_P_BOOLEAN,
+	"PMIxDirectConnEarly": S_P_BOOLEAN,
+	"PMIxDirectConnUCX": S_P_BOOLEAN,
+	"PMIxDirectSameArch": S_P_BOOLEAN,
+	"PMIxEnv": S_P_STRING,
+	"PMIxFenceBarrier": S_P_BOOLEAN,
+	"PMIxNetDevicesUCX": S_P_STRING,
+	"PMIxShareServerTopology": S_P_BOOLEAN,
+	"PMIxTimeout": S_P_UINT32,
+	"PMIxTlsUCX": S_P_STRING
+}
+
 
 all_confs = {
     "slurm": slurm_options,
+    "slurmdbd": slurmdbd_options,
+    "cgroup": cgroup_options,
+    "mpi": mpi_options,
     "PartitionName": partition_options,
     "NodeName": nodename_options,
     "DownNodes": downnodes_options,
     "NodeSet": nodeset_options
 }
-
-import re
 
 _HOSTLIST_RE = re.compile(r'^(?P<prefix>[^\[\]]*)\[(?P<inner>[^\[\]]+)\](?P<suffix>.*)$')
 
