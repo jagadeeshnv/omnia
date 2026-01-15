@@ -4,6 +4,8 @@ from enum import Enum
 
 
 class SlurmParserEnum(str, Enum):
+    """Enumeration of Slurm configuration parameter types for parsing and validation."""
+
     S_P_IGNORE = "none"         # no value / ignored
     S_P_STRING = "str"          # generic string
     S_P_LONG = "int"            # integer (Python has only int)
@@ -492,12 +494,30 @@ mpi_options = {
 	"PMIxTlsUCX": S_P_STRING
 }
 
+# From https://github.com/SchedMD/slurm/blob/slurm-<VERSION>s/src/interfaces/gres.c#L101C40-L116C2
+gres_options = {
+	"AutoDetect": S_P_STRING,
+	"Count": S_P_STRING,	# Number of Gres available */
+	"CPUs" : S_P_STRING,	# CPUs to bind to Gres resource
+	"Cores": S_P_STRING,	# Cores to bind to Gres resource */
+	"File":  S_P_STRING,	# Path to Gres device */
+	"Files": S_P_STRING,	# Path to Gres device */
+	"Flags": S_P_STRING,	# GRES Flags */
+	"Link":  S_P_STRING,	# Communication link IDs */
+	"Links": S_P_STRING,	# Communication link IDs */
+	"MultipleFiles": S_P_STRING, # list of GRES device files */
+	"Name":  S_P_STRING,	# Gres name */
+	"Type":  S_P_STRING	# Gres type (e.g. model name) */
+}
 
 all_confs = {
     "slurm": slurm_options,
     "slurmdbd": slurmdbd_options,
     "cgroup": cgroup_options,
     "mpi": mpi_options,
+    # "gres": gres_options,
+    # GRES can have different combinations, hence excluded
+    # https://slurm.schedmd.com/gres.conf.html#SECTION_EXAMPLES
     "PartitionName": partition_options,
     "NodeName": nodename_options,
     "DownNodes": downnodes_options,
