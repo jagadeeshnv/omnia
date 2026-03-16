@@ -66,8 +66,6 @@ innodb_lock_wait_timeout: 900
 conf_server: "--conf-server {{ ctld_list | join(',') }}"
 # TODO tmp
 nodes_yaml: "{{ hostvars['localhost']['oim_shared_path'] }}/omnia/openchami/workdir/nodes/nodes.yaml"
-bmc_username: "{{ hostvars['localhost']['bmc_username'] }}"
-bmc_password: "{{ hostvars['localhost']['bmc_password'] }}"
 clear_slurm_files: false
 conf_in_nfs: true
 input_project_dir: "{{ hostvars['localhost']['input_project_dir'] }}"
@@ -78,13 +76,10 @@ slurm_user_group: slurm
 restart_slurm_services: "{{ hostvars['localhost']['restart_slurm_services'] | default(true) }}"
 slurm_db_username: "{{ hostvars['localhost']['slurm_db_username'] | default('dbuser') }}"
 slurm_db_password: "{{ hostvars['localhost']['slurm_db_password'] }}"
-slurm_db_host: "{{ hostvars['localhost']['slurm_db_host'] | default(false) }}"
 slurm_db_port: "{{ hostvars['localhost']['slurm_db_port'] | default(3306) }}"
 slurm_db_type: "{{ hostvars['localhost']['slurm_db_type'] | default('mariadb') }}"
 # share_path: "{{ hostvars['localhost']['share_path'] }}" # TODO: direct load vars omnia_config.yml
 slurm_support: "{{ hostvars['localhost']['slurm_support'] }}"
-slurm_share_prefix: "/"
-slurm_config_dir: etc/slurm
 slurm_dir_name: "slurm"
 slurm_dbd_port: 6819
 slurm_dbd_db_username: "{{ slurm_user }}"
@@ -92,29 +87,21 @@ slurmdbd_conf_path: "/etc/slurm/slurmdbd.conf"
 slurm_db_login_unix_socket: /var/lib/mysql/mysql.sock
 slurm_mysql_cnf_path: /etc/my.cnf.d/mysql-server.cnf
 slurm_mariadb_cnf_path: /etc/my.cnf.d/mariadb-server.cnf
+# TODO: Change default partition name to avoid conflicts with node hostnames
+# Current: "normal" could conflict if a node is named "normal"
+# Suggested alternatives: "default_partition", "@default", "slurm-default", "ALL_NODES"
 slurm_partition_name: normal
-nfs_share_slurm: "nfs_share"
-configless_slurm: "configless"
-mariadb: mariadb
-mysql: mysql
 root_user: root
 root_group: root
 plugin_slurm_dir: "/usr/lib64/slurm"
 munge_key_cmd: "dd if=/dev/urandom bs=1 count=1024"
 slurm_ctld_parameters: ['enable_configless']
-partitions: {}
-_clean_before_install: false
-_force_install_nfs: true
-installroot: "/"
 conf_file_mode: "0644"
 slurm_mode: "0644"
 munge_mode: "0400"
 munge_dir_mode: "0700"
 common_mode: "0755"
 slurm_dbd_mode: "0600"
-slurm_db_cnf_mode: "0600"
-node_drain_timeout: 900
-node_drain_delay: 30
 force_scancel_node: false
 _no_log: true
 dbd_slurm_conf:
@@ -122,7 +109,7 @@ dbd_slurm_conf:
   AccountingStorageType: accounting_storage/slurmdbd
 partition_params:
   PartitionName: "{{ slurm_partition_name }}"
-  Nodes: "{{ cmpt_list | join(',') if cmpt_list else slurm_partition_name }}"
+  Nodes: "{{ slurm_partition_name }}"
   MaxTime: "INFINITE"
   State: "UP"
   Default: "YES"
@@ -131,7 +118,6 @@ openldap_dir_name: "openldap/"
 software_config_file: "{{ input_project_dir }}/software_config.json"
 omnia_run_tags: "{{ hostvars['localhost']['omnia_run_tags'] }}"
 auth_tls_certs_path: "/opt/omnia/auth/tls_certs/ldapserver.crt"
-slurm_installation_type: configless
 pulp_webserver_cert_path: "/opt/omnia/pulp/settings/certs/pulp_webserver.crt"
 controller_empty_msg: "Slurm controller functional group is missing from PXE mapping file. Please update the file and rerun discovery.yml."
 download_container_image_path: "{{ slurm_config_path }}/hpc_tools/scripts/download_container_image.sh"

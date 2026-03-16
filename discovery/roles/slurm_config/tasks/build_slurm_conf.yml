@@ -24,7 +24,7 @@
   ansible.builtin.set_fact:
     apply_config: "{{ apply_config | default({})
      | combine({'slurm': (apply_config['slurm']
-     | combine({'NodeName': (apply_config['slurm'].NodeName | default([])) + [{'NodeName': item}]}))}) }}"
+     | combine({'NodeName': (apply_config['slurm'].NodeName | default([])) + [{'NodeName': item, 'Feature': slurm_partition_name}]}))}) }}"
   loop: "{{ login_list }}"
   when: login_list is defined and login_list
   no_log: "{{ _no_log }}"
@@ -33,9 +33,24 @@
   ansible.builtin.set_fact:
     apply_config: "{{ apply_config | default({})
      | combine({'slurm': (apply_config['slurm']
-     | combine({'NodeName': (apply_config['slurm'].NodeName | default([])) + [{'NodeName': item}]}))}) }}"
+     | combine({'NodeName': (apply_config['slurm'].NodeName | default([])) + [{'NodeName': item, 'Feature': slurm_partition_name}]}))}) }}"
   loop: "{{ compiler_login_list }}"
   when: compiler_login_list is defined and compiler_login_list
+  no_log: "{{ _no_log }}"
+
+- name: Build NodeSet with feature only
+  ansible.builtin.set_fact:
+    nodeset_params:
+      NodeSet: "{{ slurm_partition_name }}"
+      Feature: "{{ slurm_partition_name }}"
+  when: node_params is defined and node_params
+
+- name: Append NodeSet
+  ansible.builtin.set_fact:
+    apply_config: "{{ apply_config | default({})
+     | combine({'slurm': (apply_config['slurm']
+     | combine({'NodeSet': (apply_config['slurm'].NodeSet | default([]) | rejectattr('NodeSet', 'equalto', slurm_partition_name) | list) + [nodeset_params]}))}) }}"
+  when: node_params is defined and node_params
   no_log: "{{ _no_log }}"
 
 - name: Append Partition

@@ -34,6 +34,7 @@
      | combine({'CoresPerSocket': group_specs.cores_per_socket})
      | combine({'ThreadsPerCore': group_specs.threads_per_core})
      | combine({'RealMemory': group_specs.real_memory})
+     | combine({'Feature': slurm_partition_name})
      | combine({'Gres': group_specs.gres} if group_specs.gres is defined else {}) }}"
 
 - name: DEBUG - Show built proc_params

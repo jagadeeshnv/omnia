@@ -26,7 +26,7 @@
 - name: Write merged .conf
   ansible.builtin.copy:
     content: "{{ ex_conf.ini_lines | join('\n') }}\n"
-    dest: "{{ slurm_config_path }}/{{ ctld_list[0] }}/etc/slurm/{{ extra_conf }}.conf"
+    dest: "{{ slurm_config_path }}/.resources/confs/{{ extra_conf }}.conf"
     mode: "{{ conf_file_mode }}"
     owner: "{{ slurm_user }}"
     group: "{{ slurm_user_group }}"

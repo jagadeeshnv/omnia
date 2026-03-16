@@ -18,33 +18,8 @@
 - name: Include storage vars
   ansible.builtin.include_vars: "{{ input_project_dir }}/storage_config.yml"
 
-- name: Load slurm_custom.json for x86_64
-  ansible.builtin.include_vars:
-    file: "{{ input_project_dir }}/config/x86_64/rhel/{{ hostvars['localhost']['cluster_os_version'] }}/slurm_custom.json"
-    name: slurm_custom_x86_64
-  failed_when: false
-
-- name: Load slurm_custom.json for aarch64
-  ansible.builtin.include_vars:
-    file: "{{ input_project_dir }}/config/aarch64/rhel/{{ hostvars['localhost']['cluster_os_version'] }}/slurm_custom.json"
-    name: slurm_custom_aarch64
-  failed_when: false
-
-- name: Extract CUDA runfile name for x86_64 from slurm_custom.json
-  ansible.builtin.set_fact:
-    cuda_runfile_x86_64: "{{ (slurm_custom_x86_64.slurm_node.cluster | selectattr('package', 'equalto', 'cuda-run') | first).url | basename }}"
-  when:
-    - slurm_custom_x86_64 is defined
-    - slurm_custom_x86_64.slurm_node is defined
-    - slurm_custom_x86_64.slurm_node.cluster | selectattr('package', 'equalto', 'cuda-run') | list | length > 0
-
-- name: Extract CUDA runfile name for aarch64 from slurm_custom.json
-  ansible.builtin.set_fact:
-    cuda_runfile_aarch64: "{{ (slurm_custom_aarch64.slurm_node.cluster | selectattr('package', 'equalto', 'cuda-run') | first).url | basename }}"
-  when:
-    - slurm_custom_aarch64 is defined
-    - slurm_custom_aarch64.slurm_node is defined
-    - slurm_custom_aarch64.slurm_node.cluster | selectattr('package', 'equalto', 'cuda-run') | list | length > 0
+- name: Extract CUDA runfile names
+  ansible.builtin.include_tasks: extract_cuda_runfiles.yml
 
 - name: Set facts for slurm
   ansible.builtin.set_fact:
@@ -89,12 +64,11 @@
   ansible.builtin.file:
     path: "{{ slurm_config_path }}/{{ slurm_item }}"
     state: absent
-  loop: "{{ (ctld_list | default([])
-   + cmpt_list | default([])
-   + login_list | default([])
-   + compiler_login_list | default([])
-   + dbd_list | default([])
-   + ['munge.key']) | flatten }}"
+  loop:
+    - ".resources"
+    - "munge.key"
+    - "logout_user.sh"
+    - "mariadb-server.cnf"
   loop_control:
     loop_var: slurm_item
   failed_when: false
@@ -119,15 +93,23 @@
     group: root
     mode: "{{ common_mode }}"
 
-- name: Create all common directories
-  ansible.builtin.include_tasks: exist_dir.yml
-  loop:
-    - "{{ (ctld_list + cmpt_list + login_list + compiler_login_list) | product(common_dir) }}"
-    - "{{ ctld_list | product(ctld_dir) }}"
-    - "{{ dbd_list | product(db_dir) }}"
-    - "{{ (cmpt_list + login_list + compiler_login_list) | product(cmpt_dir) }}"
-  loop_control:
-    loop_var: product
+# Create .resources directory for shared files
+- name: Create .resources directory
+  ansible.builtin.file:
+    path: "{{ slurm_config_path }}/.resources"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ common_mode }}"
+
+# Create .resources/confs directory for Slurm configuration files
+- name: Create .resources/confs directory
+  ansible.builtin.file:
+    path: "{{ slurm_config_path }}/.resources/confs"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ common_mode }}"
 
 - name: Create the cert directory on share
   ansible.builtin.file:
@@ -147,55 +129,48 @@
 - name: Create hpc tools dirs
   ansible.builtin.include_tasks: hpc_tools.yml
 
-- name: Check if munge key exists top level
+- name: Check if munge key exists in .resources
   ansible.builtin.stat:
-    path: "{{ slurm_config_path }}/munge.key"
+    path: "{{ slurm_config_path }}/.resources/munge.key"
   register: munge_present
 
 - name: Ensure munge key is generated
-  ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}/munge.key"
+  ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}/.resources/munge.key"
   when: not munge_present.stat.exists
   register: munge_gen
   changed_when: munge_gen.rc == 0
 
-- name: Distribute the munge key
-  ansible.builtin.copy:
-    src: "{{ slurm_config_path }}/munge.key"
-    dest: "{{ slurm_config_path }}/{{ item }}/etc/munge/munge.key"
+- name: Set munge key permissions
+  ansible.builtin.file:
+    path: "{{ slurm_config_path }}/.resources/munge.key"
     mode: "0600"
-    remote_src: true
-  register: munge_key_copy
-  loop: "{{ (ctld_list | default([])) +
-            (cmpt_list | default([])) +
-            (compiler_login_list | default([])) +
-            (login_list | default([])) }}"
+    owner: root
+    group: root
 
 - name: Conf merge and write using slurm_conf module
   ansible.builtin.include_tasks: confs.yml
 
-- name: Create mariadb cnf
+- name: Create mariadb cnf in .resources
   ansible.builtin.template:
     src: "mariadb-server.cnf.j2"
-    dest: "{{ slurm_config_path }}/{{ item }}/etc/my.cnf.d/mariadb-server.cnf"
+    dest: "{{ slurm_config_path }}/.resources/mariadb-server.cnf"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ conf_file_mode }}"
   when: ctld_list
-  loop: "{{ ctld_list }}"
 
 - name: Generate slurmd opts for Configless
   ansible.builtin.set_fact:
     conf_server: "--conf-server {{ ctld_list | map('regex_replace', '$', ':' ~ (apply_config['slurm']['SlurmctldPort'] | string)) | join(',') }}"
 
-- name: Create epilog.sh and slurmd.service
+- name: Create epilog.sh in .resources
   ansible.builtin.template:
-    src: "{{ item.1 }}.j2"
-    dest: "{{ slurm_config_path }}/{{ item.0 }}/etc/slurm/epilog.d/{{ item.1 }}"
+    src: "logout_user.sh.j2"
+    dest: "{{ slurm_config_path }}/.resources/logout_user.sh"
     owner: "{{ root_user }}"
     group: "{{ root_group }}"
     mode: "{{ common_mode }}"
   when: cmpt_list
-  loop: "{{ cmpt_list | product(['logout_user.sh']) }}"
 
 - name: Get the slurm NFS path
   ansible.builtin.debug:
@@ -208,11 +183,6 @@
 - name: NFS path for controller trackfile
   ansible.builtin.set_fact:
     trackfile_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}/ctld_track"
-
-- name: NFS path for cloud init
-  ansible.builtin.set_fact:
-    cloud_init_nfs_path_openldap: "{{ nfs_server_ip }}:{{ nfs_server_path }}/openldap"
-  when: hostvars['localhost']['openldap_support']
 
 # This will be mounted for ucx, openmpi and ldms configurations on slurm nodes
 - name: NFS path for ucx, openmpi and ldms cloud init
