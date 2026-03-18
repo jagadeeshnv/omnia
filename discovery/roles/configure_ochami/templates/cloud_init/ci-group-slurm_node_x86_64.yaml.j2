@@ -31,18 +31,6 @@
 {% endfor %}
 
       write_files:
-        - path: /usr/local/bin/doca-install.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/doca-ofed/doca-install.sh.j2') | indent(12) }}
-
-        - path: /usr/local/bin/configure-ib-network.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/doca-ofed/configure-ib-network.sh.j2') | indent(12) }}
-
         - path: /usr/local/bin/set-ssh.sh
           permissions: '{{ file_mode_755 }}'
           content: |
@@ -223,9 +211,9 @@
         - path: /etc/hosts
           append: true
           content: |
-{% for key in ip_name_map | sort %}
+            {% for key in ip_name_map | sort %}
             {{ ip_name_map[key] }} {{ key }}
-{% endfor %}
+            {% endfor %}
         - path: /etc/sysconfig/slurmd
           owner: root:root
           permissions: '0644'
@@ -293,8 +281,7 @@
             echo "[INFO] Ensuring Slurm epilog directory and logout script permissions"
             chmod {{ file_mode_755 }} /etc/slurm/epilog.d/
             chmod {{ file_mode_755 }} /etc/slurm/epilog.d/logout_user.sh
-{% for epath in slurm_epilog_custom_paths %}
-
+            {% for epath in slurm_epilog_custom_paths %}
             echo "[INFO] Checking custom epilog script: {{ epath }}"
             if [ ! -f "{{ epath }}" ]; then
               echo "[INFO] Creating stub epilog script at {{ epath }}"
@@ -303,9 +290,8 @@
               chown {{ slurm_user }}:{{ slurm_user }} "{{ epath }}"
               chmod {{ file_mode_755 }} "{{ epath }}"
             fi
-{% endfor %}
-{% for ppath in slurm_prolog_custom_paths %}
-
+            {% endfor %}
+            {% for ppath in slurm_prolog_custom_paths %}
             echo "[INFO] Checking custom prolog script: {{ ppath }}"
             if [ ! -f "{{ ppath }}" ]; then
               echo "[INFO] Creating stub prolog script at {{ ppath }}"
@@ -314,7 +300,7 @@
               chown {{ slurm_user }}:{{ slurm_user }} "{{ ppath }}"
               chmod {{ file_mode_755 }} "{{ ppath }}"
             fi
-{% endfor %}
+            {% endfor %}
 
             echo "[INFO] Creating and configuring slurmd spool directory"
             mkdir -p {{ slurm_slurmd_spool_dir_effective }}
@@ -446,106 +432,137 @@
           content: |
             {{ lookup('template', 'templates/slurm/check_slurm_controller_status.sh.j2') | indent(12) }}
 
-        - path: /tmp/apptainer_mirror.conf
-          permissions: '0644'
-          content: |
-            {{ lookup('template', 'templates/nodes/apptainer_mirror.conf.j2') | indent(12) }}
-        
-        - path: /usr/local/bin/configure_ucx_openmpi_env.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/hpc_tools/configure_ucx_openmpi_env.sh.j2') | indent(12) }}
-
-        - path: /usr/local/bin/setup_nvhpc_sdk.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/hpc_tools/setup_nvhpc_sdk.sh.j2') | indent(12) }}
-
-        - path: /usr/local/bin/export_nvhpc_env.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/hpc_tools/export_nvhpc_env.sh.j2') | indent(12) }}
-
-        - path: /usr/local/bin/set-hostname-from-cloud-init.sh
+        - path: /usr/local/bin/update_hostname_remote.sh
           owner: root:root
           permissions: '{{ file_mode_755 }}'
           content: |
             #!/bin/bash
-            # Force hostname from cloud-init metadata
+            # Update slurm.conf with NodeName entry remotely via SSH
+            # Usage: update_hostname_remote.sh <controller_host> <node_name> <node_params>
+            # Example: update_hostname_remote.sh controller01 node001 "CPUs=64 RealMemory=256000 State=UNKNOWN"
             
-            LOG_FILE="/var/log/cloud-init-hostname.log"
-            CURRENT_HOSTNAME=$(hostname)
+            LOG_FILE="/var/log/update_hostname_remote.log"
             
-            echo "[$(date)] Starting hostname setup from cloud-init metadata" >> "$LOG_FILE"
-            echo "[$(date)] Current hostname: $CURRENT_HOSTNAME" >> "$LOG_FILE"
-            
-            # Get hostname from cloud-init metadata
-            CLOUD_HOSTNAME=$(cloud-init query ds.meta_data.local-hostname 2>/dev/null || echo "localhost")
-            echo "[$(date)] Cloud-init hostname: $CLOUD_HOSTNAME" >> "$LOG_FILE"
-            
-            # Set hostname if different from current and not localhost
-            if [ -n "$CLOUD_HOSTNAME" ] && [ "$CLOUD_HOSTNAME" != "localhost" ] && [ "$CLOUD_HOSTNAME" != "$CURRENT_HOSTNAME" ]; then
-                echo "[$(date)] Setting hostname from $CURRENT_HOSTNAME to $CLOUD_HOSTNAME" >> "$LOG_FILE"
-                
-                # Set hostname using hostnamectl
-                if hostnamectl set-hostname "$CLOUD_HOSTNAME"; then
-                    echo "[$(date)] hostnamectl succeeded" >> "$LOG_FILE"
-                else
-                    echo "[$(date)] hostnamectl failed with exit code $?" >> "$LOG_FILE"
-                fi
-                
-                # Write to /etc/hostname
-                if echo "$CLOUD_HOSTNAME" > /etc/hostname; then
-                    echo "[$(date)] Updated /etc/hostname" >> "$LOG_FILE"
-                else
-                    echo "[$(date)] Failed to update /etc/hostname with exit code $?" >> "$LOG_FILE"
-                fi
-                
-                # Restart systemd-hostnamed service
-                if systemctl restart systemd-hostnamed 2>/dev/null; then
-                    echo "[$(date)] systemd-hostnamed restarted successfully" >> "$LOG_FILE"
-                else
-                    echo "[$(date)] systemd-hostnamed restart failed with exit code $?" >> "$LOG_FILE"
-                fi
-                
-                # Verify the change
-                NEW_HOSTNAME=$(hostname)
-                echo "[$(date)] New hostname: $NEW_HOSTNAME" >> "$LOG_FILE"
-                
-                if [ "$NEW_HOSTNAME" = "$CLOUD_HOSTNAME" ]; then
-                    echo "[$(date)] Hostname setup completed successfully" >> "$LOG_FILE"
-                else
-                    echo "[$(date)] ERROR: Hostname mismatch. Expected: $CLOUD_HOSTNAME, Got: $NEW_HOSTNAME" >> "$LOG_FILE"
-                fi
-            else
-                echo "[$(date)] No hostname change needed. Cloud hostname: $CLOUD_HOSTNAME, Current: $CURRENT_HOSTNAME" >> "$LOG_FILE"
+            if [ "$#" -lt 2 ]; then
+                echo "Usage: $0 <controller_host> <node_name> [node_params]" >&2
+                echo "Example: $0 controller01 node001 'CPUs=64 RealMemory=256000 State=UNKNOWN'" >&2
+                exit 1
             fi
             
-            echo "[$(date)] Hostname setup script completed" >> "$LOG_FILE"
+            CONTROLLER_HOST="$1"
+            NODE_NAME="$2"
+            NODE_PARAMS="${3:-}"
+            
+            echo "[$(date)] Starting slurm.conf NodeName update for $NODE_NAME on $CONTROLLER_HOST" >> "$LOG_FILE"
+            
+            # Validate node name format
+            if ! echo "$NODE_NAME" | grep -qE '^[a-zA-Z0-9][-a-zA-Z0-9]*$'; then
+                echo "[$(date)] ERROR: Invalid node name format: $NODE_NAME" >> "$LOG_FILE"
+                exit 1
+            fi
+            
+            # SSH to controller and update slurm.conf
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "root@$CONTROLLER_HOST" bash -s << ENDSSH
+            set -e
+            
+            NODE_NAME="$NODE_NAME"
+            NODE_PARAMS="$NODE_PARAMS"
+            SLURM_CONF="{{ client_mount_path }}/slurm/.resources/confs/slurm.conf"
+            BACKUP_CONF="\${SLURM_CONF}.backup.\$(date +%Y%m%d_%H%M%S)"
+            
+            echo "[$(date)] Updating slurm.conf for node: \$NODE_NAME"
+            
+            # Check if slurm.conf exists
+            if [ ! -f "\$SLURM_CONF" ]; then
+                echo "[$(date)] ERROR: slurm.conf not found at \$SLURM_CONF"
+                exit 1
+            fi
+            
+            # Backup slurm.conf
+            cp "\$SLURM_CONF" "\$BACKUP_CONF"
+            echo "[$(date)] Backed up slurm.conf to \$BACKUP_CONF"
+            
+            # Check if NodeName entry already exists
+            if grep -q "^NodeName=\$NODE_NAME " "\$SLURM_CONF"; then
+                echo "[$(date)] NodeName entry for \$NODE_NAME already exists, updating..."
+                
+                if [ -n "\$NODE_PARAMS" ]; then
+                    # Update existing entry with new parameters
+                    sed -i "s|^NodeName=\$NODE_NAME .*|NodeName=\$NODE_NAME \$NODE_PARAMS|" "\$SLURM_CONF"
+                    echo "[$(date)] Updated NodeName=\$NODE_NAME with params: \$NODE_PARAMS"
+                else
+                    echo "[$(date)] No parameters provided, keeping existing entry"
+                fi
+            else
+                echo "[$(date)] NodeName entry for \$NODE_NAME does not exist, adding..."
+                
+                # Find the last NodeName line
+                LAST_NODE_LINE=\$(grep -n "^NodeName=" "\$SLURM_CONF" | tail -1 | cut -d: -f1)
+                
+                if [ -n "\$LAST_NODE_LINE" ]; then
+                    # Insert after last NodeName entry
+                    if [ -n "\$NODE_PARAMS" ]; then
+                        sed -i "\${LAST_NODE_LINE}a NodeName=\$NODE_NAME \$NODE_PARAMS" "\$SLURM_CONF"
+                        echo "[$(date)] Added NodeName=\$NODE_NAME \$NODE_PARAMS after line \$LAST_NODE_LINE"
+                    else
+                        sed -i "\${LAST_NODE_LINE}a NodeName=\$NODE_NAME" "\$SLURM_CONF"
+                        echo "[$(date)] Added NodeName=\$NODE_NAME after line \$LAST_NODE_LINE"
+                    fi
+                else
+                    echo "[$(date)] ERROR: No existing NodeName entries found in slurm.conf"
+                    exit 1
+                fi
+            fi
+            
+            # Verify the change
+            if grep -q "^NodeName=\$NODE_NAME" "\$SLURM_CONF"; then
+                echo "[$(date)] SUCCESS: NodeName entry verified in slurm.conf"
+                grep "^NodeName=\$NODE_NAME" "\$SLURM_CONF"
+                
+                # Reconfigure slurmctld if running
+                if systemctl is-active --quiet slurmctld; then
+                    echo "[$(date)] Reconfiguring slurmctld..."
+                    scontrol reconfigure
+                    echo "[$(date)] slurmctld reconfigured"
+                else
+                    echo "[$(date)] slurmctld is not running, skipping reconfigure"
+                fi
+                
+                exit 0
+            else
+                echo "[$(date)] ERROR: Failed to verify NodeName entry in slurm.conf"
+                # Restore backup
+                cp "\$BACKUP_CONF" "\$SLURM_CONF"
+                echo "[$(date)] Restored slurm.conf from backup"
+                exit 1
+            fi
+            ENDSSH
+            
+            SSH_EXIT_CODE=\$?
+            
+            if [ \$SSH_EXIT_CODE -eq 0 ]; then
+                echo "[$(date)] SUCCESS: slurm.conf updated for $NODE_NAME on $CONTROLLER_HOST" >> "$LOG_FILE"
+            else
+                echo "[$(date)] ERROR: Failed to update slurm.conf for $NODE_NAME (exit code: \$SSH_EXIT_CODE)" >> "$LOG_FILE"
+                exit 1
+            fi
+
 
       runcmd:
-        - rm -rf /var/lib/cloud/instance
-        - /usr/local/bin/set-hostname-from-cloud-init.sh
+        - echo "Starting cloud init for SLURM_NODE_x86_64"
         - /usr/local/bin/set-ssh.sh
         - /usr/local/bin/install_nvidia_driver.sh
-        # slurm user and group created in the users module
 
         - /usr/local/bin/configure_dirs_and_mounts.sh
         - cp /cert/pulp_webserver.crt /etc/pki/ca-trust/source/anchors && update-ca-trust
         - sed -i 's/^gpgcheck=1/gpgcheck=0/' /etc/dnf/dnf.conf
 
-        - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
         - /usr/local/bin/configure_slurmd_setup.sh
         - /usr/local/bin/configure_munge_and_pam.sh
 
         - setenforce 0
         - /usr/local/bin/configure_firewall_and_services.sh
         
-        - /usr/local/bin/setup_nvhpc_sdk.sh
-        - /usr/local/bin/export_nvhpc_env.sh
         - systemctl restart slurmd
 
         - echo "Cloud-Init has completed successfully."

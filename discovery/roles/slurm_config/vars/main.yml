@@ -103,7 +103,7 @@ munge_dir_mode: "0700"
 common_mode: "0755"
 slurm_dbd_mode: "0600"
 force_scancel_node: false
-_no_log: true
+_no_log: false
 dbd_slurm_conf:
   AccountingStoragePort: "{{ slurm_dbd_port }}"
   AccountingStorageType: accounting_storage/slurmdbd

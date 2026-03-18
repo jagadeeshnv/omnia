@@ -219,27 +219,6 @@
 
             echo "===== NVIDIA GPU setup completed ====="
 
-{% if hostvars['localhost']['openldap_support'] %}
-        - path: /etc/sssd/sssd.conf
-          owner: root:root
-          permissions: '0600'
-          content: |
-            {{ lookup('template', 'templates/openldap/sssd.conf.j2') | indent(6) }}
-
-        - path: /usr/local/bin/update_ldap_conf.sh
-          owner: root:root
-          permissions: '0755'
-          content: |
-            {{ lookup('template', 'templates/openldap/update_ldap_conf.sh.j2') | indent(12) }}
-{% endif %}
-
-{% if hostvars['localhost']['ldms_support'] %}
-        - path: /root/ldms_sampler.sh
-          owner: root:root
-          permissions: '0755'
-          content: |
-            {{ lookup('template', 'templates/ldms/ldms_sampler.sh.j2') | indent(12) }}
-{% endif %}
         - path: /usr/local/bin/configure_dirs_and_mounts.sh
           permissions: '{{ file_mode_755 }}'
           content: |
@@ -544,6 +523,122 @@
             fi
             
             echo "[$(date)] Hostname setup script completed" >> "$LOG_FILE"
+
+        - path: /usr/local/bin/update_hostname_remote.sh
+          owner: root:root
+          permissions: '{{ file_mode_755 }}'
+          content: |
+            #!/bin/bash
+            # Update slurm.conf with NodeName entry remotely via SSH
+            # Usage: update_hostname_remote.sh <controller_host> <node_name> <node_params>
+            # Example: update_hostname_remote.sh controller01 node001 "CPUs=64 RealMemory=256000 State=UNKNOWN"
+            
+            LOG_FILE="/var/log/update_hostname_remote.log"
+            
+            if [ "$#" -lt 2 ]; then
+                echo "Usage: $0 <controller_host> <node_name> [node_params]" >&2
+                echo "Example: $0 controller01 node001 'CPUs=64 RealMemory=256000 State=UNKNOWN'" >&2
+                exit 1
+            fi
+            
+            CONTROLLER_HOST="$1"
+            NODE_NAME="$2"
+            NODE_PARAMS="${3:-}"
+            
+            echo "[$(date)] Starting slurm.conf NodeName update for $NODE_NAME on $CONTROLLER_HOST" >> "$LOG_FILE"
+            
+            # Validate node name format
+            if ! echo "$NODE_NAME" | grep -qE '^[a-zA-Z0-9][-a-zA-Z0-9]*$'; then
+                echo "[$(date)] ERROR: Invalid node name format: $NODE_NAME" >> "$LOG_FILE"
+                exit 1
+            fi
+            
+            # SSH to controller and update slurm.conf
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "root@$CONTROLLER_HOST" bash -s << ENDSSH
+            set -e
+            
+            NODE_NAME="$NODE_NAME"
+            NODE_PARAMS="$NODE_PARAMS"
+            SLURM_CONF="{{ client_mount_path }}/slurm/.resources/confs/slurm.conf"
+            BACKUP_CONF="\${SLURM_CONF}.backup.\$(date +%Y%m%d_%H%M%S)"
+            
+            echo "[$(date)] Updating slurm.conf for node: \$NODE_NAME"
+            
+            # Check if slurm.conf exists
+            if [ ! -f "\$SLURM_CONF" ]; then
+                echo "[$(date)] ERROR: slurm.conf not found at \$SLURM_CONF"
+                exit 1
+            fi
+            
+            # Backup slurm.conf
+            cp "\$SLURM_CONF" "\$BACKUP_CONF"
+            echo "[$(date)] Backed up slurm.conf to \$BACKUP_CONF"
+            
+            # Check if NodeName entry already exists
+            if grep -q "^NodeName=\$NODE_NAME " "\$SLURM_CONF"; then
+                echo "[$(date)] NodeName entry for \$NODE_NAME already exists, updating..."
+                
+                if [ -n "\$NODE_PARAMS" ]; then
+                    # Update existing entry with new parameters
+                    sed -i "s|^NodeName=\$NODE_NAME .*|NodeName=\$NODE_NAME \$NODE_PARAMS|" "\$SLURM_CONF"
+                    echo "[$(date)] Updated NodeName=\$NODE_NAME with params: \$NODE_PARAMS"
+                else
+                    echo "[$(date)] No parameters provided, keeping existing entry"
+                fi
+            else
+                echo "[$(date)] NodeName entry for \$NODE_NAME does not exist, adding..."
+                
+                # Find the last NodeName line
+                LAST_NODE_LINE=\$(grep -n "^NodeName=" "\$SLURM_CONF" | tail -1 | cut -d: -f1)
+                
+                if [ -n "\$LAST_NODE_LINE" ]; then
+                    # Insert after last NodeName entry
+                    if [ -n "\$NODE_PARAMS" ]; then
+                        sed -i "\${LAST_NODE_LINE}a NodeName=\$NODE_NAME \$NODE_PARAMS" "\$SLURM_CONF"
+                        echo "[$(date)] Added NodeName=\$NODE_NAME \$NODE_PARAMS after line \$LAST_NODE_LINE"
+                    else
+                        sed -i "\${LAST_NODE_LINE}a NodeName=\$NODE_NAME" "\$SLURM_CONF"
+                        echo "[$(date)] Added NodeName=\$NODE_NAME after line \$LAST_NODE_LINE"
+                    fi
+                else
+                    echo "[$(date)] ERROR: No existing NodeName entries found in slurm.conf"
+                    exit 1
+                fi
+            fi
+            
+            # Verify the change
+            if grep -q "^NodeName=\$NODE_NAME" "\$SLURM_CONF"; then
+                echo "[$(date)] SUCCESS: NodeName entry verified in slurm.conf"
+                grep "^NodeName=\$NODE_NAME" "\$SLURM_CONF"
+                
+                # Reconfigure slurmctld if running
+                if systemctl is-active --quiet slurmctld; then
+                    echo "[$(date)] Reconfiguring slurmctld..."
+                    scontrol reconfigure
+                    echo "[$(date)] slurmctld reconfigured"
+                else
+                    echo "[$(date)] slurmctld is not running, skipping reconfigure"
+                fi
+                
+                exit 0
+            else
+                echo "[$(date)] ERROR: Failed to verify NodeName entry in slurm.conf"
+                # Restore backup
+                cp "\$BACKUP_CONF" "\$SLURM_CONF"
+                echo "[$(date)] Restored slurm.conf from backup"
+                exit 1
+            fi
+            ENDSSH
+            
+            SSH_EXIT_CODE=\$?
+            
+            if [ \$SSH_EXIT_CODE -eq 0 ]; then
+                echo "[$(date)] SUCCESS: slurm.conf updated for $NODE_NAME on $CONTROLLER_HOST" >> "$LOG_FILE"
+            else
+                echo "[$(date)] ERROR: Failed to update slurm.conf for $NODE_NAME (exit code: \$SSH_EXIT_CODE)" >> "$LOG_FILE"
+                exit 1
+            fi
+
 
       runcmd:
         - rm -rf /var/lib/cloud/instance

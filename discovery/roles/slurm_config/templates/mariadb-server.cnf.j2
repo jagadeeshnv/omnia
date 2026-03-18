@@ -1,7 +1,7 @@
 [mysqld]
-datadir=/var/lib/mysql
+datadir={{ slurm_mount_path }}/slurm/db/datadir
 socket=/var/lib/mysql/mysql.sock
-log-error=/var/log/mariadb/mariadb.log
+log-error={{ slurm_mount_path }}/slurm/db/mariadb.log
 pid-file=/run/mariadb/mariadb.pid
 
 # SlurmDBD recommended settings

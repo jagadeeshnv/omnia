@@ -31,3 +31,15 @@
   when:
     - slurm_support
     - ctld_list or (cmpt_list or login_list or compiler_login_list)
+
+- name: Configure openldap if supported
+  ansible.builtin.include_tasks: openldap_config.yml
+  when:
+    - slurm_support
+    - hostvars['localhost']['openldap_support']
+
+- name: Create hpc tools dirs
+  ansible.builtin.include_tasks: hpc_tools.yml
+  when:
+    - slurm_support
+  

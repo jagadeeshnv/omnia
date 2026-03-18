@@ -54,8 +54,8 @@ __default_config:
     GresTypes: gpu
     SelectTypeParameters: CR_Core_Memory
     SlurmdParameters: l3cache_as_socket # Requires hwloc v2.
-    SlurmctldLogFile: "/var/log/slurm/slurmctld.log"
-    SlurmdLogFile: "/var/log/slurm/slurmd.log"
+    SlurmctldLogFile: "{{ slurm_mount_path }}/slurm/logs/ctld/slurmctld.log"
+    SlurmdLogFile: "{{ slurm_mount_path }}/slurm/logs/compute/slurmd-%n.log"
     SlurmctldPidFile: /var/run/slurmctld.pid
     SlurmdPidFile: /var/run/slurmd.pid
     AuthType: auth/munge
@@ -78,7 +78,7 @@ __default_config:
         State: UP
   slurmdbd:
     AuthType: auth/munge
-    LogFile: "/var/log/slurm/slurmdbd.log"
+    LogFile: "{{ slurm_mount_path }}/slurm/logs/dbd/slurmdbd.log"
     PidFile: /var/run/slurmdbd.pid
     SlurmUser: "{{ slurm_user }}"
     StorageType: accounting_storage/mysql

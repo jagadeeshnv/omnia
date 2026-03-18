@@ -38,10 +38,14 @@
     skip_merge: "{{ slurm_cluster[0].skip_merge | default(false) }}"
     slurm_config_path: "{{ share_path }}/{{ slurm_dir_name }}"
     controller_trackfile_path: "{{ share_path }}/ctld_track"
+    slurm_mount_path: "{{ share_path }}"
+    slurm_conf_path: "{{ share_path }}/{{ slurm_dir_name }}/.resources/confs"
 
-- name: Configure openldap if supported
-  ansible.builtin.include_tasks: openldap_config.yml
-  when: hostvars['localhost']['openldap_support']
+- name: NFS path for cloud init
+  ansible.builtin.set_fact:
+    cloud_init_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}/slurm"
+    trackfile_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}/ctld_track"
+    cloud_init_slurm_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}"
 
 - name: Create slurm group
   ansible.builtin.group:
@@ -126,9 +130,6 @@
     mode: "{{ file_mode }}"
   become: true
 
-- name: Create hpc tools dirs
-  ansible.builtin.include_tasks: hpc_tools.yml
-
 - name: Check if munge key exists in .resources
   ansible.builtin.stat:
     path: "{{ slurm_config_path }}/.resources/munge.key"
@@ -139,13 +140,6 @@
   when: not munge_present.stat.exists
   register: munge_gen
   changed_when: munge_gen.rc == 0
-
-- name: Set munge key permissions
-  ansible.builtin.file:
-    path: "{{ slurm_config_path }}/.resources/munge.key"
-    mode: "0600"
-    owner: root
-    group: root
 
 - name: Conf merge and write using slurm_conf module
   ansible.builtin.include_tasks: confs.yml
@@ -175,20 +169,6 @@
 - name: Get the slurm NFS path
   ansible.builtin.debug:
     msg: "The slurm NFS path is {{ share_path }}/slurm"
-
-- name: NFS path for cloud init
-  ansible.builtin.set_fact:
-    cloud_init_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}/slurm"
-
-- name: NFS path for controller trackfile
-  ansible.builtin.set_fact:
-    trackfile_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}/ctld_track"
-
-# This will be mounted for ucx, openmpi and ldms configurations on slurm nodes
-- name: NFS path for ucx, openmpi and ldms cloud init
-  ansible.builtin.set_fact:
-    cloud_init_slurm_nfs_path: "{{ nfs_server_ip }}:{{ nfs_server_path }}"
-    client_mount_path: "{{ share_path }}"
 
 - name: Ensure SSH key directory exists on Slurm share
   ansible.builtin.file:
