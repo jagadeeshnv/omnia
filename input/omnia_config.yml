@@ -98,6 +98,9 @@
 slurm_cluster:
   - cluster_name: slurm_cluster
     nfs_storage_name: nfs_slurm
+    mounts: # applicable to this cluster only
+      - nfs_slurm # Using nfs_slurm mount from storage_config.yml
+      - nfs_home # Using nfs_home mount from storage_config.yml
     # skip_merge: true
     
     # Uncomment to enable homogeneous discovery mode

@@ -3,84 +3,53 @@
     "title": "Configuration Schema",
     "type": "object",
     "properties": {
-      "nfs_client_params": {
+      "powervault_config": {
         "type": "array",
+        "description": "List of PowerVault iSCSI volume connection definitions",
         "items": {
           "type": "object",
           "properties": {
-            "nfs_name": {
+            "name": {
               "type": "string",
-              "description": "The unique NFS server name"
+              "description": "Unique identifier for this PowerVault volume",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
             },
-            "server_ip": {
+            "ip": {
+              "description": "List of target controller IP addresses",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "format": "ipv4"
+              },
+              "uniqueItems": true
+            },
+            "port": {
+              "description": "TCP port for iSCSI target (default 3260)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "iscsi_initiator": {
+              "description": "iSCSI initiator IQN",
               "type": "string",
-              "anyOf": [
-                {
-                  "allOf": [
-                    { "pattern": ".*[A-Za-z].*" },
-                    { "format": "idn-hostname" }
-                  ]
-                },
-                {
-                  "allOf": [
-                    { "pattern": "^[0-9.]+$" },
-                    { "format": "ipv4" }
-                  ]
-                }
-              ]
+              "pattern": "^iqn\\.[a-zA-Z0-9.-]+(?::[a-zA-Z0-9._:-]+)?$"
             },
-            "server_share_path": {
+            "volume_id": {
+              "description": "Volume identifier (hex string / WWN)",
               "type": "string",
-              "pattern": "^/(?:[^/]+(?:/[^/]+)*)?/?$"
+              "pattern": "^[a-fA-F0-9]+$"
             },
-            "client_share_path": {
+            "mount": {
+              "description": "Reference to a mounts[] entry by name",
               "type": "string",
-              "pattern": "^/(?:[^/]+(?:/[^/]+)*)?/?$"
-            },
-            "client_mount_options": {
-              "type": "string"
+              "pattern": "^[a-zA-Z0-9_-]+$"
             }
           },
-          "required": [
-            "server_ip",
-            "server_share_path",
-            "client_share_path",
-            "client_mount_options"
-          ]
-        },
-        "minItems": 1
-      },
-      "powervault_config": {
-        "type": "object",
-        "required": ["ip", "iscsi_initiator", "volume_id"],
-        "properties": {
-          "ip": {
-            "description": "List of target controller IP addresses",
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string",
-              "format": "ipv4"
-            },
-            "uniqueItems": true
-          },
-
-          "port": {
-            "description": "TCP port for iSCSI (default 3260)",
-            "type": "integer"
-          },
-
-          "iscsi_initiator": {
-            "description": "iSCSI initiator IQN",
-            "type": "string",
-            "pattern": "^iqn\\.[a-zA-Z0-9.-]+(?::[a-zA-Z0-9._:-]+)?$"
-          },
-
-          "volume_id": {
-            "description": "Volume identifier (hex string)",
-            "type": "string",
-            "pattern": "^[a-fA-F0-9]+$"
-          }
+          "required": ["name", "ip", "iscsi_initiator", "volume_id"],
+          "additionalProperties": false
         }
       },
       "mounts": {
@@ -108,83 +77,78 @@
             },
             "fs_type": {
               "type": "string",
-              "description": "Filesystem type (e.g., ext4, xfs, nfs, cifs, auto)",
-              "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs"]
+              "description": "Filesystem type. Overrides mount_params profile when specified.",
+              "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none"]
             },
             "mnt_opts": {
               "type": "string",
-              "description": "Mount options (e.g., defaults,noexec,nofail)",
-              "pattern": "^[a-zA-Z0-9,=._-]+$"
+              "description": "Mount options. Overrides mount_params profile when specified.",
+              "pattern": "^[a-zA-Z0-9,=._@/-]+$"
             },
             "dump_freq": {
               "type": "string",
-              "description": "Dump frequency (usually 0)",
+              "description": "Dump frequency (usually 0). Overrides mount_params profile when specified.",
               "pattern": "^[0-2]$"
             },
             "fsck_pass": {
               "type": "string",
-              "description": "Fsck pass number (usually 0 or 2)",
+              "description": "Fsck pass number (usually 0 or 2). Overrides mount_params profile when specified.",
               "pattern": "^[0-9]$"
             },
-            "roles": {
+            "mount_params": {
+              "type": "string",
+              "description": "Name of the mount_params profile to use for unspecified fields",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "functional_group_prefix": {
               "type": "array",
-              "description": "List of node roles to apply this mount to",
+              "description": "List of oChaMI functional group prefixes to apply this mount to. Omit to apply to all groups.",
               "items": {
                 "type": "string",
                 "pattern": "^[a-zA-Z0-9_-]+$"
               },
               "uniqueItems": true
             },
-            "mount_default_field": {
+            "role": {
               "type": "string",
-              "description": "Name of the default profile to use for missing optional fields (references mount_default_fields.name)",
-              "pattern": "^[a-zA-Z0-9_-]+$"
+              "description": "Omnia-reserved role for this mount. Used for internal infrastructure mounts.",
+              "enum": ["omnia_slurm_share", "omnia_k8s_share"]
             }
           },
-          "required": ["name", "source", "mount_point", "roles"],
-          "anyOf": [
-            {
-              "required": ["mount_default_field"],
-              "description": "Must have mount_default_field to reference a default profile"
-            },
-            {
-              "required": ["mnt_opts"],
-              "description": "Must have mnt_opts explicitly specified"
-            }
-          ],
+          "required": ["name", "source", "mount_point"],
           "additionalProperties": false
         }
       },
-      "mount_default_fields": {
+      "mount_params": {
         "type": "object",
-        "description": "Named default mount configurations (key = profile name, value = profile settings)",
+        "description": "Named mount parameter profiles. Each profile provides defaults for fs_type, mnt_opts, dump_freq, fsck_pass. Custom fields are allowed for backend-specific metadata.",
         "patternProperties": {
           "^[a-zA-Z0-9_-]+$": {
             "type": "object",
             "properties": {
               "fs_type": {
                 "type": "string",
-                "description": "Default filesystem type (e.g., ext4, xfs, nfs, cifs, auto)",
+                "description": "Default filesystem type",
                 "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none"]
               },
               "mnt_opts": {
                 "type": "string",
-                "description": "Default mount options (e.g., defaults,noexec,nofail)",
-                "pattern": "^[a-zA-Z0-9,=._\\\\-]+$"
+                "description": "Default mount options",
+                "pattern": "^[a-zA-Z0-9,=._@/-]+$"
               },
               "dump_freq": {
                 "type": "string",
-                "description": "Default dump frequency (usually 0)",
+                "description": "Default dump frequency",
                 "pattern": "^[0-2]$"
               },
               "fsck_pass": {
                 "type": "string",
-                "description": "Default fsck pass number (usually 0 or 2)",
+                "description": "Default fsck pass number",
                 "pattern": "^[0-9]$"
               }
             },
             "required": ["fs_type", "mnt_opts", "dump_freq", "fsck_pass"],
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "additionalProperties": false
@@ -214,12 +178,12 @@
             },
             "maxsize": {
               "type": "string",
-              "description": "Maximum size in bytes or human-readable format (used with size: auto)",
+              "description": "Maximum size (used with size: auto)",
               "pattern": "^[0-9]+[BKMGT]?$"
             },
-            "roles": {
+            "functional_group_prefix": {
               "type": "array",
-              "description": "List of node roles to apply this swap to",
+              "description": "List of oChaMI functional group prefixes to apply this swap to. Omit to apply to all groups.",
               "items": {
                 "type": "string",
                 "pattern": "^[a-zA-Z0-9_-]+$"
@@ -227,12 +191,11 @@
               "uniqueItems": true
             }
           },
-          "required": ["name", "filename", "size", "roles"],
+          "required": ["name", "filename", "size"],
           "additionalProperties": false
         }
       }
     },
-    "required": [
-      "nfs_client_params"
-    ]
+    "required": [],
+    "additionalProperties": false
   }
