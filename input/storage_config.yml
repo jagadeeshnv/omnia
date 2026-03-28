@@ -19,17 +19,47 @@
 
 # -----------------------------Powervault-------------------------------------------
 # powervault_config
-# Mandatory when using PowerVault for persistent storage.
-# Below parameters are mandatory when powervault_config is defined
-    # ip: A list of PowerVault controller ipv4 addresses used for iSCSI target discovery and login.
-    # iscsi_initiator: Specifies the InitiatorName used by the host when connecting to the iSCSI target. This IQN uniquely identifies the host to the storage array.
-    # volume_id: This is the unique WWN/identifier for the specific volume that should be used for persistent storage. This value is used for multipath scanning to select the correct mapped device.
+# Processed entirely via runcmd script (setup_iscsi_storage.sh).
+# The device path (/dev/mapper/XXX) is only known after iSCSI login + multipath scan,
+# so powervault mounts CANNOT use the cloud-init mounts module.
+# The runcmd script handles: iscsid enable, initiator name, discovery, login,
+# multipathd, volume_id matching, partitioning, formatting, mount, and bind mounts.
+#
+# Mandatory parameters:
+#   - name: Unique identifier for this powervault entry. Required
+#   - ip: List of PowerVault controller IPv4 addresses for iSCSI target discovery. Required
+#   - iscsi_initiator: InitiatorName IQN for the host. Required
+#   - volume_id: WWN/identifier for the volume (used for multipath device matching). Required
+#
+# Optional parameters:
+#   - port: TCP port for iSCSI target service. Default: 3260
+#   - mount_point: Where the discovered device gets mounted. Required
+#   - mount_params: Named profile for fs_type/mnt_opts (read by the runcmd script). Optional
+#   - node_key: ds.meta_data key for per-node bind mounts (e.g., "local_hostname"). Optional
+#       - When present, implies bind mount: <mount_point>/<node_key_value>/<subdir> -> <target>
+#       - fs_type forced to "none", mnt_opts forced to "bind" (automatic)
+#   - node_mount_point: List of bind mount targets. Required when node_key is set
+#       - Pattern: <mount_point>/<node_key_value>/<target_stripped_leading_slash> -> <target>
+#   - slurm_conf_var: List of slurm.conf dir parameters to set to the union of node_mount_point values. Optional
+#       - Only directory params: StateSaveLocation, SlurmdSpoolDir
+#   - functional_group_prefix: List of functional group prefixes for node targeting. Required
 
-# Below are the optional parameters when powervault_config is defined
-    # port: Defines the TCP port for the iSCSI target service. When port is not specified, default port used will be 3260
-
-# Below is an example on how to configure powervault_config
-# In this configuration, a single controller portal is provided.
+# Example:
+# powervault_config:
+#   - name: powervault1
+#     ip: [172.1.2.3]
+#     port: 3260
+#     iscsi_initiator: iqn.2025-01.com.dell:scontrol-node
+#     volume_id: 00c0ff4343f1f1f1001c8c4e6901000000
+#     mount_point: "/mnt/slurm-persist"
+#     mount_params: "powervault_iscsi"
+#     node_key: "local_hostname"
+#     node_mount_point:
+#       - "/var/lib/mysql"
+#       - "/var/spool/slurm"
+#     slurm_conf_var:
+#       - "StateSaveLocation"
+#     functional_group_prefix: ["slurm_control_node"]
 
 powervault_config:
   - name: powervault1
@@ -38,199 +68,200 @@ powervault_config:
     port: 3260
     iscsi_initiator: iqn.2025-01.com.dell:scontrol-node
     volume_id: 00c0ff4343f1f1f1001c8c4e6901000000
-    # option A directly from cloud-init mounts module
-    mount: powervault_slurm_persist
-  
+    mount_point: "/mnt/slurm-persist"
+    mount_params: "powervault_iscsi"
+    node_key: "local_hostname"
+    node_mount_point:
+      - "/var/lib/mysql"
+      - "/var/spool/slurm"
+    slurm_conf_var:
+      - "StateSaveLocation"
+    functional_group_prefix: ["slurm_control_node"]
+
   - name: powervault2
     ip:
       - 172.1.2.4
     port: 3260
     iscsi_initiator: iqn.2025-01.com.dell:slurmd-node
     volume_id: 00c0ff4343f1f1f1001c8c4e6901000001
-    # option B - to directly specify all mount params
-    # source: "/dev/mapper/360002ac0000000000000000000000000"
-    # mount_point: "/scratch"
-    # mount_params: "vast_nfs_performance"
-    # fs_type: "xfs"
-    # mnt_opts: "defaults,nofail"
-    # functional_group_prefix: ["k8s_node"]
+    mount_point: "/mnt/slurmd-persist"
+    mount_params: "powervault_iscsi"
+    functional_group_prefix: ["slurm_node"]
+
+#TODO: for powervault one more possibility is is to use one mount with source like powervault:powervault2
 
 
 # -----------------------------Cloud-Init Mounts------------------------------------------------
 # mounts
-# Configure mount points and swap files compatible with cloud-init mounts module
-# This configuration will be used to generate cloud-init compatible mount configurations
-
+# Configure mount points compatible with cloud-init mounts module.
+# Source must be known at boot time (NFS paths, UUIDs, local devices).
+# For runtime-discovered sources (iSCSI/multipath), use powervault_config above.
+#
 # Each mount entry contains the following fields (matching /etc/fstab format):
-#   - name: Unique identifier for this mount entry (e.g., "iscsi_slurm_persist", "nfs_slurm_home"). Required
-#   - source: Device name (e.g., /dev/sdc, UUID=xxx, or network path like 192.168.1.100:/export/share). Required
+#   - name: Unique identifier for this mount entry. Required
+#   - source: Device or network path (e.g., /dev/sdc, UUID=xxx, 192.168.1.100:/share). Required
 #   - mount_point: Mount point path (e.g., /mnt, /opt/data). Required
-#   - fs_type: Filesystem type (e.g., ext4, xfs, nfs, cifs, auto). Optional
-#       - Supported: nfs, nfs4, cifs, tmpfs, cephfs, btrfs, ext2, ext3, ext4, xfs, none, etc.
-#       - For network filesystems (nfs, cifs, etc.), source should be the server path (e.g., 192.168.1.100:/export/share)
-#       - If specified, takes PRIORITY over mount_default_field
+#   - fs_type: Filesystem type (e.g., ext4, xfs, nfs, nfs4, cifs, auto). Optional
+#       - If specified, takes PRIORITY over mount_params profile
 #   - mnt_opts: Mount options (e.g., defaults,noexec,nofail). Optional
-#       - If specified, takes PRIORITY over mount_default_field
+#       - If specified, takes PRIORITY over mount_params profile
 #   - dump_freq: Dump frequency (usually "0"). Optional
-#       - If specified, takes PRIORITY over mount_default_field
+#       - If specified, takes PRIORITY over mount_params profile
 #   - fsck_pass: Fsck pass number (usually "0" or "2"). Optional
-#       - If specified, takes PRIORITY over mount_default_field
-#   - mount_default_field: Name of the default profile to use (references mount_default_fields.name). Optional
+#       - If specified, takes PRIORITY over mount_params profile
+#   - mount_params: Name of a profile in mount_params section. Optional
 #       - Used ONLY for fields not explicitly specified in the mount entry
-#       - If not specified, system will auto-select based on fs_type or use global defaults
-#   - functional_group_prefix: List of functional group prefixes to match against (e.g., ["slurm", "k8s", "login"]). Required
-#       - All nodes whose role starts with any of the given prefixes will have the mount applied
+#   - node_key: ds.meta_data key for per-node bind mounts (e.g., "local_hostname", "local_ipv4"). Optional
+#       - When present, implies bind mount with per-node source path
+#       - fs_type forced to "none", mnt_opts forced to "bind" (automatic)
+#       - Source becomes: <source>/<ds.meta_data.node_key>/<mount_point_stripped_leading_slash>
+#   - node_mount_point: List of bind mount targets. Required when node_key is set
+#       - Each target gets: <source>/<node_key_value>/<target_stripped_slash> -> <target>
+#   - slurm_conf_var: List of slurm.conf dir parameters. Optional
+#       - Each param gets the union of all node_mount_point values
+#       - Only directory params: StateSaveLocation, SlurmdSpoolDir
+#   - functional_group_prefix: List of functional group prefixes. Optional
+#       - All nodes whose role starts with any prefix get this mount
 #       - e.g., ["slurm"] matches slurm_control_node, slurm_node, etc.
+#       - If omitted, mount applies to all nodes
 #
 # PRIORITY ORDER for field resolution:
 #   1. Explicit value in mount entry (HIGHEST PRIORITY)
-#   2. Value from mount_default_field profile (if specified)
+#   2. Value from mount_params profile (if specified)
 #   3. Auto-selected profile based on fs_type
 #   4. Global fallback profile
 #   5. Hardcoded system defaults (LOWEST PRIORITY)
 
-# mount_default_fields: Mapping of named default profiles (key = profile name)
-# Each profile (value) contains:
-#   - fs_type: Default filesystem type (e.g., "auto", "xfs", "nfs"). Required
-#   - mnt_opts: Default mount options (e.g., "defaults,nofail,_netdev"). Required
-#   - dump_freq: Default dump frequency (usually "0"). Required
-#   - fsck_pass: Default fsck pass number (usually "0" or "2"). Required
-# Note: Profiles are templates that can be referenced by any mount entry
-# Note: Profile names must match pattern ^[a-zA-Z0-9_-]+$ (alphanumeric, underscore, hyphen)
-
-# swap: Swap file configuration (list of swap configurations)
-# Each swap entry contains the following fields:
-#   - name: Unique identifier for this swap entry (e.g., "compute_swap", "slurm_swap"). Required
-#   - filename: Path to the swap file to create (e.g., /swapfile). Required
-#   - size: Size in bytes, 'auto', or human-readable format (e.g., "2G", "512M"). Required
-#            Units: B, K, M, G, T (Note: 1K = 1024B)
-#   - maxsize: Maximum size in bytes or human-readable format (used with size: auto). Optional
-#   - functional_group_prefix: List of functional group prefixes to match against (e.g., ["slurm", "k8s"]). Required
-#       - All nodes whose role starts with any of the given prefixes will have the swap applied
-
-# Example configuration:
+# Example: static mount with all explicit params (no profile)
 # mounts:
-#   # Example 1: PowerVault iSCSI storage - Persistent storage (matches setup_iscsi_storage.sh)
-#   - name: "powervault_slurm_persist"
-#     source: "UUID=<uuid-from-blkid>"  # Or /dev/mapper/mpatha1 (partition created by setup script)
-#     mount_point: "/mnt/slurm-persist"
-#     mount_params: "powervault_iscsi"
-#     # fs_type (xfs), mnt_opts, dump_freq, fsck_pass from powervault_iscsi profile
-#     functional_group_prefix: ["slurm_control_node"]
+#   - name: "atomic_mount"
+#     source: "192.168.1.100:/export"
+#     mount_point: "/mnt/data"
+#     fs_type: "nfs4"
+#     mnt_opts: "nfsvers=4.1,hard,intr,noatime,nconnect=16,rsize=1048576,wsize=1048576"
+#     dump_freq: "0"
+#     fsck_pass: "0"
 #
-#   # Example 2: PowerVault bind mount - MySQL data directory (from /mnt/slurm-persist/mysql)
-#   - name: "powervault_mysql_bind"
-#     source: "/mnt/slurm-persist/"
-#     mount_point: "/all/slurm"
-#     mount_params: "bind_mounts"
-#     # fs_type (none), mnt_opts (bind), dump_freq, fsck_pass from bind_mounts profile
-#     functional_group_prefix: ["slurm_control_node"]
-#
-#   # Example 3: PowerVault bind mount - Slurm spool directory (from /mnt/slurm-persist/spool)
-#   - name: "powervault_spool_bind"
-#     source: "/mnt/slurm-persist/spool"
-#     mount_point: "/var/spool"
-#     mount_params: "bind_mounts"
-#     # fs_type (none), mnt_opts (bind), dump_freq, fsck_pass from bind_mounts profile
-#     functional_group_prefix: ["k8s"]
-#
-#   # Example 4: VAST NFS storage - Home directories using default profile
+# Example: static mount using profile
 #   - name: "vast_home"
-#     source: "192.168.1.100:/home"  # VAST NFS export
+#     source: "192.168.1.100:/home"
 #     mount_point: "/home"
 #     mount_params: "vast_nfs"
-#     # fs_type (nfs4), mnt_opts, dump_freq, fsck_pass from vast_nfs profile
 #     functional_group_prefix: ["slurm"]
 #
-#   # Example 5: VAST NFS storage - Shared applications with explicit fs_type
-#   - name: "vast_apps"
-#     source: "192.168.1.100:/apps"  # VAST NFS export
-#     mount_point: "/opt/apps"
-#     fs_type: "nfs4"  # ← EXPLICIT (takes priority over profile)
-#     mount_params: "network_storage"
-#     # mnt_opts, dump_freq, fsck_pass from network_storage profile
-#     # fs_type from network_storage is IGNORED (explicit wins)
-#     functional_group_prefix: ["slurm"]
-#
-#   # Example 6: VAST NFS storage - High-performance scratch with performance profile
-#   - name: "vast_scratch"
-#     source: "192.168.1.100:/scratch"  # VAST NFS export
-#     mount_point: "/scratch"
-#     mount_params: "vast_nfs_performance"
-#     # fs_type (nfs4), mnt_opts (with 1MB buffers), dump_freq, fsck_pass from vast_nfs_performance profile
+# Example: per-node bind mount (node_key triggers bind behavior)
+#   - name: "scratch_isolation"
+#     source: "/mnt/scratch"
+#     node_key: "local_hostname"
+#     node_mount_point:
+#       - "/scratch"
+#       - "/tmp"
+#     slurm_conf_var:
+#       - "SlurmdSpoolDir"
 #     functional_group_prefix: ["slurm_node"]
+#   # On node001 generates fstab:
+#   #   /mnt/scratch/node001/scratch  /scratch  none  bind  0  0
+#   #   /mnt/scratch/node001/tmp      /tmp      none  bind  0  0
+#   # slurm.conf: SlurmdSpoolDir=/scratch,/tmp
 
 mounts:
-  # Example 0: Atomic mount using all params
-  - name: Atomic mount
+  # Static mount: all explicit params, no profile, applies to all nodes
+  - name: "atomic_mount"
     source: "UUID=<uuid-from-blkid>"
     mount_point: "/mnt/atomic"
     fs_type: "nfs"
     mnt_opts: "defaults,nofail,_netdev,x-systemd.after=cloud-init-network.service"
     dump_freq: "0"
     fsck_pass: "0"
-    # functional_group_prefix: # no mention will apply yo all mounts
 
-  # Example 1: PowerVault iSCSI storage - Persistent storage using profile
-  - name: "powervault_slurm_persist"
-    source: "UUID=<uuid-from-blkid>"
-    mount_point: "/mnt/slurm-persist"
-    mount_params: "powervault_iscsi"
-    # fs_type (xfs), mnt_opts, dump_freq, fsck_pass from powervault_iscsi profile
-    functional_group_prefix: ["slurm_control_node_x86_64"] # This will only apply to slurm control nodes on x86_64 architecture
-  
-  # Example 2: PowerVault bind mount - MySQL data directory
-  - name: "powervault_mysql_bind"
-    source: "192.1.2.3:/mnt/mysql"
-    mount_point: "/var/lib/mysql"
-    mount_params: "nfs_bind_mounts"
-    functional_group_prefix: ["slurm_control_node"] # This will only apply to slurm control nodes all archs
-  
-  # Example 3: VAST NFS storage - Home directories using VAST profile
+  # VAST NFS: shared export for home directories
   - name: "vast_home"
     source: "{{ vast_nfs_ip }}:/home"
     mount_point: "/home"
     mount_params: "vast_nfs"
-    functional_group_prefix: ["slurm"] # This will only apply to all slurm nodes all archs
-  
-  # Example 4: VAST NFS storage - High-performance scratch
-  - name: "vast_scratch"
-    source: "192.168.1.100:/scratch"
-    mount_point: "/scratch"
-    mount_params: "vast_nfs_performance"
-    functional_group_prefix: ["k8s_node"] # This will only apply to k8s nodes all archs
+    functional_group_prefix: ["slurm"]
 
-# Named default profiles for mount configurations
-# Apart from fs_type, mnt_opts, dump_freq, fsck_pass others are custom fields,
-# which can be used in mount templates
+  # VAST NFS: shared export for applications
+  - name: "vast_apps"
+    source: "{{ vast_nfs_ip }}:/apps"
+    mount_point: "/apps"
+    mount_params: "vast_nfs"
+    functional_group_prefix: ["slurm"]
+
+  # VAST NFS: shared export for slurm state (controller)
+  - name: "vast_slurm_state"
+    source: "{{ vast_nfs_ip }}:/slurm"
+    mount_point: "/var/slurm"
+    mount_params: "vast_nfs"
+    slurm_conf_var:
+      - "StateSaveLocation"
+    functional_group_prefix: ["slurm_control_node"]
+
+  # VAST NFS: shared scratch export
+  - name: "vast_scratch_shared"
+    source: "192.168.1.100:/scratch"
+    mount_point: "/mnt/scratch"
+    mount_params: "vast_nfs_performance"
+    functional_group_prefix: ["slurm_node"]
+
+  # Per-node bind mount from shared scratch (node_key triggers bind behavior)
+  - name: "scratch_isolation"
+    source: "/mnt/scratch"
+    mount_point: "/mounted/scratch"
+    node_key: "local_hostname"
+    node_mount_point:
+      - "/scratch"
+      - "/tmp"
+    slurm_conf_var:
+      - "SlurmdSpoolDir"
+    functional_group_prefix: ["slurm_node"]
+
+  # Powervault: shared export for slurm state (controller)
+  - name: "powervault_slurm_state"
+    source: "powervault:powervault2"
+    mount_point: "/mnt/slurmd-persist"
+    mount_params: "powervault_iscsi"
+    functional_group_prefix: ["slurm_node"]
+
+# -----------------------------Mount Params (Profiles)-------------------------------
+# Named default profiles for mount configurations.
+# Apart from fs_type, mnt_opts, dump_freq, fsck_pass, additional custom fields
+# can be defined and used in mount templates (e.g., vast_nfs_ip).
+
 mount_params:
-  # Default NFS mount configuration - standard NFS defaults
+  # Default NFS mount - standard NFS4.1 with high-performance options
   default:
-    fs_type: "nfs"
-    mnt_opts: "defaults,nofail,_netdev,x-systemd.after=cloud-init-network.service"
+    fs_type: "nfs4"
+    mnt_opts: "nfsvers=4.1,hard,intr,noatime,nconnect=16,rsize=1048576,wsize=1048576"
     dump_freq: "0"
     fsck_pass: "0"
 
-  # VAST NFS storage - Standard configuration for VAST Data NFS exports
+  # VAST NFS storage - standard configuration
   vast_nfs:
-    fs_type: "nfs4"
-    mnt_opts: "defaults,nofail,_netdev,noatime,x-systemd.after=cloud-init-network.service"
+    fs_type: "nfs"
+    mnt_opts: "nfsvers=3,hard,intr,noatime,nconnect=16,rsize=1048576,wsize=1048576"
     dump_freq: "0"
     fsck_pass: "0"
     vast_nfs_ip: "192.168.1.100"
 
-  # VAST NFS storage - High-performance configuration with large buffers
+  # VAST NFS storage - high-performance with large buffers
   vast_nfs_performance:
-    fs_type: "nfs4"
-    mnt_opts: "defaults,nofail,_netdev,noatime,nodiratime,rsize=1048576,wsize=1048576"
+    fs_type: "nfs"
+    mnt_opts: "nfsvers=3,hard,intr,noatime,nodiratime,nconnect=16,rsize=1048576,wsize=1048576"
     dump_freq: "0"
     fsck_pass: "0"
-    perf_ip: "192.168.1.101"
 
-  # PowerVault iSCSI storage - Block device with XFS filesystem
+  # PowerVault iSCSI storage - block device with XFS
   powervault_iscsi:
     fs_type: "xfs"
     mnt_opts: "defaults,_netdev,noatime,x-systemd.requires=iscsi.service"
+    dump_freq: "0"
+    fsck_pass: "0"
+
+  # BeeGFS parallel filesystem
+  beegfs:
+    fs_type: "beegfs"
+    mnt_opts: "cfgFile=/etc/beegfs/beegfs-client.conf"
     dump_freq: "0"
     fsck_pass: "0"
 
@@ -269,19 +300,14 @@ mount_params:
     dump_freq: "0"
     fsck_pass: "2"
 
-# Example swap configuration:
-# swap:
-#   - name: "slurm_swap"
-#     filename: "/swapfile"
-#     size: "4G"
-#     maxsize: "8G"
-#     functional_group_prefix: ["slurm_node"]
-#
-#   - name: "k8s_swap"
-#     filename: "/swapfile"
-#     size: "2G"
-#     maxsize: "4G"
-#     functional_group_prefix: ["kube_node"]
+# -----------------------------Swap-------------------------------------------------
+# swap: Swap file configuration (list of swap configurations)
+# Each swap entry contains:
+#   - name: Unique identifier. Required
+#   - filename: Path to the swap file (e.g., /swapfile). Required
+#   - size: Size in bytes, 'auto', or human-readable (e.g., "2G", "512M"). Required
+#   - maxsize: Max size (used with size: auto). Optional
+#   - functional_group_prefix: List of functional group prefixes. Required
 
 swap:
   - name: "compute_swap"
@@ -289,4 +315,3 @@ swap:
     size: "2G"
     maxsize: "4G"
     functional_group_prefix: ["slurm_node"]
-

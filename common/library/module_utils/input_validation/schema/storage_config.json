@@ -147,7 +147,7 @@
                 "pattern": "^[0-9]$"
               }
             },
-            "required": ["fs_type", "mnt_opts", "dump_freq", "fsck_pass"],
+            "required": ["fs_type", "mnt_opts"],
             "additionalProperties": true
           }
         },
