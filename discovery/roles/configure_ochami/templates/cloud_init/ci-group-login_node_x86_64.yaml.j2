@@ -125,6 +125,12 @@
           content: |
             {{ lookup('template', 'templates/nodes/apptainer_mirror.conf.j2') | indent(12) }}
 
+        - path: /etc/munge/munge.key
+          owner: {{ munge_user }}:{{ munge_group }}
+          permissions: '{{ file_mode_400 }}'
+          encoding: b64
+          content: {{ slurp_munge_key.content }}
+
       runcmd:
         - /usr/local/bin/set-ssh.sh
         # Ensure Slurm NFS root is mounted at client_mount_path (e.g. /share_omnia)

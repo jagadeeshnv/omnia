@@ -355,6 +355,12 @@
     conf_server: "--conf-server {{ ctld_list | map('regex_replace', '$', ':' ~ (slurm_conf_dict.get('SlurmctldPort', '6817') | string)) | join(',') }}"
   when: slurm_conf_dict is defined
 
+- name: Create dict of conf and ini_lines
+  ansible.builtin.set_fact:
+    conf_ini_dict: "{{ conf_ini_dict | default({}) | combine({item.item.key: item.ini_lines}) }}"
+  loop: "{{ merged_conf.results }}"
+  when: item.ini_lines
+
 - name: Write merged .conf
   ansible.builtin.copy:
     content: "{{ item.ini_lines | join('\n') }}\n"

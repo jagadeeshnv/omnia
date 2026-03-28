@@ -60,6 +60,12 @@
     state: directory
     mode: "{{ hostvars['localhost']['dir_permissions_755'] }}"
 
+- name: Read the munge key
+  ansible.builtin.slurp:
+    src: "{{ slurm_config_path }}/munge.key"
+  register: slurp_munge_key
+  no_log: true
+
 - name: Read the ssh key
   ansible.builtin.command: cat {{ ssh_key_path }}
   changed_when: false

@@ -238,6 +238,12 @@
           content: |
             {{ lookup('template', 'templates/hpc_tools/configure_nvhpc_env.sh.j2') | indent(12) }}
 
+        - path: /etc/munge/munge.key
+          owner: {{ munge_user }}:{{ munge_group }}
+          permissions: '{{ file_mode_400 }}'
+          encoding: b64
+          content: {{ slurp_munge_key.content }}
+
       runcmd:
         - /usr/local/bin/set-ssh.sh
         - /usr/local/bin/install_cuda_toolkit.sh
