@@ -1,38 +1,23 @@
 #!/bin/bash
 CONTROLLER_IP="{{ hostvars['oim']['controller_ip'] }}"
-MARKER="/var/log/track/slurm_controller_track"
-SERVICE_FILE="/usr/lib/systemd/system/slurmd.service"
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes"
 
-echo "Reading slurm controller port from $SERVICE_FILE ..."
-EXEC_LINE=$(grep -E "^ExecStart=" "$SERVICE_FILE")
-CONTROLLER_PORT=$(echo "$EXEC_LINE" | grep -oP '(?<=--conf-server\s)[^ ]+' | cut -d':' -f2)
+echo "Waiting for controller ($CONTROLLER_IP) to become reachable..."
 
-if [[ -z "$CONTROLLER_PORT" ]]; then
-    echo "WARNING: Could not parse port from service file. Defaulting to 6817."
-    CONTROLLER_PORT=6817
-fi
-
-echo "Controller port identified as $CONTROLLER_PORT"
-echo "Waiting for slurm controller to be reachable..."
-
-while true; do
-    if ping -c1 -W1 "$CONTROLLER_IP" &>/dev/null && \
-      bash -c "cat < /dev/tcp/$CONTROLLER_IP/$CONTROLLER_PORT" &>/dev/null; then
-        echo "Slurm controller reachable and port $CONTROLLER_PORT is open."
-        break
-    else
-        echo "Controller not ready. Retrying in 5 seconds..."
-        sleep 5
-    fi
+# Fast pre-filter: wait for basic network reachability before attempting SSH
+while ! ping -c1 -W1 "$CONTROLLER_IP" &>/dev/null; do
+    echo "Controller not reachable. Retrying in 5 seconds..."
+    sleep 5
 done
+echo "Controller is reachable."
 
-echo "Waiting for marker file: $MARKER"
+echo "Checking if slurmctld service is active on controller..."
 while true; do
-    if [ -f "$MARKER" ]; then
-        echo "Marker file found. Proceeding."
+    if ssh $SSH_OPTS "$CONTROLLER_IP" "systemctl is-active --quiet slurmctld"; then
+        echo "slurmctld service is active on controller. Proceeding."
         break
     else
-        echo "Marker file not found. Retrying in 5 seconds..."
+        echo "slurmctld not yet active. Retrying in 5 seconds..."
         sleep 5
     fi
 done

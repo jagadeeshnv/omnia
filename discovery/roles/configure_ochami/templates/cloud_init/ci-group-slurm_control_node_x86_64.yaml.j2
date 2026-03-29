@@ -247,6 +247,132 @@
               sleep 5
             done
 
+        - path: /usr/local/sbin/update_nodename.sh
+          permissions: '0755'
+          content: |
+            #!/bin/bash
+
+            # Controller-side script to update a single NodeName entry in slurm.conf.
+            # Place this on the slurmctld node (e.g. /usr/local/sbin/update_nodename.sh).
+            # Compute nodes invoke it via SSH:
+            #   ssh controller /usr/local/sbin/update_nodename.sh <hostname> "<nodename_line>"
+            #
+            # Safe for concurrent calls -- uses local flock for serialization.
+
+            set -euo pipefail
+
+            # --- Arguments ---------------------------------------------------------------
+            HOSTNAME="${1:?Usage: $0 <hostname> <nodename_line> [config_file]}"
+            SLURMD_OUT="${2:?Usage: $0 <hostname> <nodename_line> [config_file]}"
+            CONFIG="${3:-/etc/slurm/slurm.conf}"
+
+            LOCK_FILE="${CONFIG}.lock"
+            FLOCK_TIMEOUT=120   # seconds to wait for exclusive lock
+
+            # --- Helpers -----------------------------------------------------------------
+            log()  { echo "[update_nodename][${HOSTNAME}] $*"; }
+
+            # --- Validate inputs ---------------------------------------------------------
+            [[ "$SLURMD_OUT" == NodeName=* ]] \
+                || { log "ERROR: NodeName line must start with 'NodeName='"; exit 1; }
+
+            [[ -f "$CONFIG" ]] || { log "ERROR: $CONFIG not found"; exit 1; }
+
+            # --- Acquire lock and update -------------------------------------------------
+            (
+                if ! flock -x -w "$FLOCK_TIMEOUT" 200; then
+                    log "ERROR: Could not acquire lock within ${FLOCK_TIMEOUT}s"
+                    exit 1
+                fi
+
+                log "Lock acquired, updating configuration..."
+
+                # Backup before modification (per-node, overwritten each run)
+                cp -p "$CONFIG" "${CONFIG}.bak.${HOSTNAME}"
+
+                # Use awk for safe replacement/insertion -- immune to sed metacharacter issues.
+                # Exact match: "NodeName=<hostname>" followed by a space or end-of-line,
+                # so "node1" won't match "node10".
+                awk -v hostname="$HOSTNAME" -v newline="$SLURMD_OUT" '
+                BEGIN { found = 0; last_nn = 0 }
+                {
+                    if ($0 ~ "^NodeName=" hostname "( |$)") {
+                        print newline
+                        found = 1
+                    } else {
+                        print
+                    }
+                    if ($0 ~ /^NodeName=/) last_nn = NR
+                }
+                END {
+                    if (!found) {
+                        print "___INSERT_AFTER___ " last_nn > "/dev/stderr"
+                    }
+                }
+                ' "$CONFIG" > "${CONFIG}.tmp" 2>"${CONFIG}.insert_info"
+
+                INSERT_INFO=$(cat "${CONFIG}.insert_info" 2>/dev/null || true)
+                rm -f "${CONFIG}.insert_info"
+
+                if [[ "$INSERT_INFO" == ___INSERT_AFTER___* ]]; then
+                    # Node not found in existing config -- insert after last NodeName line
+                    LAST_NN=${INSERT_INFO#___INSERT_AFTER___}
+                    LAST_NN=$(echo "$LAST_NN" | tr -d ' ')
+
+                    if [[ -z "$LAST_NN" || "$LAST_NN" == "0" ]]; then
+                        log "No existing NodeName entries, appending to end"
+                        echo "$SLURMD_OUT" >> "${CONFIG}.tmp"
+                    else
+                        log "Inserting after line $LAST_NN (new node)"
+                        awk -v last="$LAST_NN" -v newline="$SLURMD_OUT" '
+                            { print }
+                            NR == last { print newline }
+                        ' "$CONFIG" > "${CONFIG}.tmp"
+                    fi
+                else
+                    log "Replaced existing NodeName=$HOSTNAME entry"
+                fi
+
+                # Validate: our line must appear in the result
+                if ! grep -qF "$SLURMD_OUT" "${CONFIG}.tmp"; then
+                    log "ERROR: Validation failed -- NodeName line missing from new config"
+                    rm -f "${CONFIG}.tmp"
+                    exit 1
+                fi
+
+                # Validate: line count should change by at most +1 (new node) or 0 (replace)
+                ORIG_LINES=$(wc -l < "$CONFIG")
+                NEW_LINES=$(wc -l < "${CONFIG}.tmp")
+                DIFF=$(( NEW_LINES - ORIG_LINES ))
+                if [[ $DIFF -lt 0 || $DIFF -gt 1 ]]; then
+                    log "ERROR: Line count changed unexpectedly ($ORIG_LINES -> $NEW_LINES), aborting"
+                    rm -f "${CONFIG}.tmp"
+                    exit 1
+                fi
+
+                # Atomic replace
+                mv "${CONFIG}.tmp" "$CONFIG"
+
+                log "Updated. Current NodeName entries:"
+                grep '^NodeName=' "$CONFIG" | while IFS= read -r l; do log "  $l"; done
+
+            ) 200>"$LOCK_FILE"
+
+            # --- Reconfigure slurmctld to pick up the change ----------------------------
+            # Safe to call repeatedly -- slurmctld handles rapid reconfigures gracefully.
+            if command -v scontrol &>/dev/null; then
+                log "Running scontrol reconfigure..."
+                if scontrol reconfigure 2>&1; then
+                    log "slurmctld reconfigured successfully"
+                else
+                    log "WARNING: scontrol reconfigure failed -- may need manual reconfigure"
+                fi
+            else
+                log "WARNING: scontrol not found -- run 'scontrol reconfigure' manually"
+            fi
+
+            log "Done"
+
       runcmd:
          - /usr/local/bin/set-ssh.sh
          - mkdir -p {{ client_mount_path }}/slurm/ssh

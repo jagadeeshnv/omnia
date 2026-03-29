@@ -485,6 +485,65 @@
           content: |
             {{ lookup('template', 'templates/hpc_tools/export_nvhpc_env.sh.j2') | indent(12) }}
 
+        - path: /usr/local/sbin/update_nodename_remote.sh
+          permissions: '0755'
+          content: |
+            #!/bin/bash
+
+            # Compute-node wrapper: collects local hardware info via slurmd -C,
+            # then SSHes to the controller to run update_nodename.sh.
+            #
+            # Usage: ./update_nodename_remote.sh <slurmctld_host> [feature_name] [config_file]
+            # Example: ./update_nodename_remote.sh controller normal /etc/slurm/slurm.conf
+            #
+            # Prerequisites:
+            #   - slurmd must be installed on this node
+            #   - update_nodename.sh must exist on the controller (default: /root/)
+            #   - Passwordless SSH from this node to the controller
+
+            set -euo pipefail
+
+            # --- Configuration -----------------------------------------------------------
+            SLURM_CTLD="${1:?Usage: $0 <slurmctld_host> [feature_name] [config_file]}"
+            FEATURE_NAME="${2:-normal}"
+            CONFIG_FILE="${3:-/etc/slurm/slurm.conf}"
+            REMOTE_SCRIPT="/usr/local/sbin/update_nodename.sh"
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes"
+            LOG_PREFIX="[update_nodename]"
+
+            # --- Helpers -----------------------------------------------------------------
+            log()  { echo "${LOG_PREFIX}[$(hostname -s)] $*"; }
+            die()  { log "ERROR: $*" >&2; exit 1; }
+
+            # --- Gather local node info --------------------------------------------------
+            current_hostname=$(hostname -s)
+            log "Collecting slurmd -C output..."
+
+            slurmd_output=$(slurmd -C 2>/dev/null | head -n 1) \
+                || die "slurmd -C failed -- is slurmd installed?"
+
+            [[ -n "$slurmd_output" ]] || die "slurmd -C returned empty output"
+            [[ "$slurmd_output" == NodeName=* ]] \
+                || die "Unexpected slurmd -C output (missing NodeName=): $slurmd_output"
+
+            # Append Feature tag
+            slurmd_output="${slurmd_output} Feature=${FEATURE_NAME}"
+
+            log "Hostname : $current_hostname"
+            log "NodeLine : $slurmd_output"
+            log "Target   : $SLURM_CTLD:$CONFIG_FILE"
+
+            # --- Call the controller-side script via SSH ---------------------------------
+            # SSH concatenates all args into one string for the remote shell to parse,
+            # which destroys quoting. Use printf %q to shell-escape each argument so the
+            # remote shell reconstructs the original values.
+            log "Invoking ${REMOTE_SCRIPT} on ${SLURM_CTLD}..."
+
+            ssh $SSH_OPTS "$SLURM_CTLD" \
+                "$(printf '%q ' "$REMOTE_SCRIPT" "$current_hostname" "$slurmd_output" "$CONFIG_FILE")"
+
+            log "Done!"
+
       runcmd:
         - rm -rf /var/lib/cloud/instance
         - /usr/local/bin/set-ssh.sh
@@ -547,5 +606,6 @@
         - /usr/local/bin/setup_nvhpc_sdk.sh
         - /usr/local/bin/export_nvhpc_env.sh
         - systemctl restart slurmd
+        - /usr/local/sbin/update_nodename_remote.sh {{ ctld_list[0] }}
 
         - echo "Cloud-Init has completed successfully."

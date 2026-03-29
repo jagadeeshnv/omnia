@@ -26,18 +26,6 @@
       disable_root: false
 
       write_files:
-        - path: /usr/local/bin/doca-install.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/doca-ofed/doca-install.sh.j2') | indent(12) }}
-
-        - path: /usr/local/bin/configure-ib-network.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/doca-ofed/configure-ib-network.sh.j2') | indent(12) }}
-
         - path: /usr/local/bin/set-ssh.sh
           permissions: '{{ file_mode_755 }}'
           content: |
@@ -72,7 +60,7 @@
                     fi
                 done
             fi
-        
+
         - path: /root/.ssh/config
           permissions: '0600'
           content: |
@@ -80,170 +68,13 @@
                 IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
                 IdentitiesOnly yes
 
-        - path: /usr/local/bin/install_nvidia_driver.sh
-          permissions: '0755'
-          content: |
-            #!/bin/bash
-            LOGFILE="/var/log/nvidia_install.log"
-            exec > >(tee -a "$LOGFILE") 2>&1
-
-            echo "===== Starting NVIDIA GPU detection and driver installation ====="
-
-            # Check for NVIDIA GPU presence
-            echo "[INFO] Checking for NVIDIA GPU..."
-            if ! lspci | grep -i nvidia &>/dev/null; then
-                echo "[INFO] No NVIDIA GPU detected. Exiting."
-                exit 0
-            fi
-
-            echo "[INFO] NVIDIA GPU detected. Proceeding with setup."
-
-            # Check if NVIDIA driver is already installed
-            if command -v nvidia-smi &>/dev/null; then
-                echo "[INFO] NVIDIA driver already installed. Skipping driver installation."
-            else
-                echo "[INFO] Mounting NFS runfile directory for driver installation..."
-                mkdir -p /gpu-runfile
-                mount -t nfs {{ cloud_init_nfs_path }}/hpc_tools/runfile /gpu-runfile
-
-                if [ $? -ne 0 ]; then
-                    echo "[ERROR] Failed to mount NFS runfile share. Exiting."
-                    exit 1
-                fi
-
-                echo "[INFO] Installing NVIDIA driver..."
-                if [ -f "/gpu-runfile/{{ cuda_runfile_x86_64 }}" ]; then
-                    bash /gpu-runfile/{{ cuda_runfile_x86_64 }} --silent --driver --no-opengl-libs --kernel-source-path=/lib/modules/$(uname -r)/build
-                    if [ $? -eq 0 ] && command -v nvidia-smi &>/dev/null; then
-                        echo "[SUCCESS] NVIDIA driver installed successfully."
-                        nvidia-smi -pm 1
-                    else
-                        echo "[ERROR] NVIDIA driver installation failed."
-                    fi
-                else
-                    echo "[ERROR] NVIDIA driver runfile not found in /gpu-runfile/"
-                fi
-
-                echo "[INFO] Cleaning up temporary NFS mount..."
-                umount /gpu-runfile 2>/dev/null
-                rmdir /gpu-runfile 2>/dev/null
-            fi
-
-            echo "[INFO] Setting up CUDA toolkit mount..."
-            # Unmount first if already mounted
-            umount /usr/local/cuda 2>/dev/null
-
-            # Create mount point
-            mkdir -p /usr/local/cuda
-
-            cuda_nfs_share="{{ cloud_init_nfs_path }}/hpc_tools/cuda"
-
-            echo "[INFO] Mounting CUDA toolkit from NFS: $cuda_nfs_share"
-            mount -t nfs "$cuda_nfs_share" /usr/local/cuda
-
-            if [ $? -eq 0 ]; then
-                echo "[SUCCESS] CUDA toolkit NFS mount successful"
-
-                # Add to fstab for persistence
-                grep -q "$cuda_nfs_share" /etc/fstab || echo "$cuda_nfs_share /usr/local/cuda nfs defaults,_netdev 0 0" >> /etc/fstab
-
-                echo "[INFO] Configuring persistent CUDA environment..."
-
-                # System-wide profile for login shells
-                cat > /etc/profile.d/cuda.sh << 'EOF'
-            export PATH=/usr/local/cuda/bin:$PATH
-            export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-            export CUDA_HOME=/usr/local/cuda
-            EOF
-                chmod +x /etc/profile.d/cuda.sh
-
-                # Bashrc for non-login shells
-                cat > /etc/bashrc.cuda << 'EOF'
-            if [ -d "/usr/local/cuda/bin" ]; then
-                export PATH="/usr/local/cuda/bin:$PATH"
-                export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
-                export CUDA_HOME="/usr/local/cuda"
-            fi
-            EOF
-                grep -q "bashrc.cuda" /etc/bashrc || echo "source /etc/bashrc.cuda" >> /etc/bashrc
-
-                # Slurm prolog for job environment
-                mkdir -p /etc/slurm/prolog.d
-                cat > /etc/slurm/prolog.d/cuda.sh << 'EOF'
-            #!/bin/bash
-            export PATH=/usr/local/cuda/bin:$PATH
-            export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-            export CUDA_HOME=/usr/local/cuda
-            EOF
-                chmod +x /etc/slurm/prolog.d/cuda.sh
-
-                # Apply immediately for current session
-                export PATH=/usr/local/cuda/bin:$PATH
-                export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-                export CUDA_HOME=/usr/local/cuda
-
-                echo "[SUCCESS] Persistent CUDA environment configured"
-            else
-                echo "[ERROR] Failed to mount CUDA toolkit NFS share"
-                # Clean up failed mount
-                rmdir /usr/local/cuda 2>/dev/null
-                exit 1
-            fi
-
-            echo "[INFO] Verifying installation..."
-            if command -v nvidia-smi &>/dev/null; then
-                nvidia_version=$(nvidia-smi --version | head -n1)
-                echo "[SUCCESS] NVIDIA driver: $nvidia_version"
-            else
-                echo "[ERROR] NVIDIA driver not found."
-            fi
-
-            if command -v nvcc &>/dev/null; then
-                cuda_version=$(nvcc --version | grep "release" | awk '{print $6}' | sed 's/,//')
-                echo "[SUCCESS] CUDA toolkit: version $cuda_version"
-            else
-                echo "[ERROR] CUDA toolkit (nvcc) not found."
-            fi
-
-            echo "[INFO] Testing persistence in new shell..."
-            bash -c 'nvcc --version > /dev/null 2>&1'
-            if [ $? -eq 0 ]; then
-                echo "[SUCCESS] CUDA persistence test passed"
-            else
-                echo "[WARNING] CUDA persistence test failed - manual PATH setup may be needed"
-            fi
-
-            echo "===== NVIDIA GPU setup completed ====="
-
-
-{% if hostvars['localhost']['openldap_support'] %}
-        - path: /etc/sssd/sssd.conf
-          owner: root:root
-          permissions: '0600'
-          content: |
-            {{ lookup('template', 'templates/openldap/sssd.conf.j2') | indent(6) }}
-
-        - path: /usr/local/bin/update_ldap_conf.sh
-          owner: root:root
-          permissions: '0755'
-          content: |
-            {{ lookup('template', 'templates/openldap/update_ldap_conf.sh.j2') | indent(12) }}
-{% endif %}
-
-{% if hostvars['localhost']['ldms_support'] %}
-        - path: /root/ldms_sampler.sh
-          owner: root:root
-          permissions: '0755'
-          content: |
-            {{ lookup('template', 'templates/ldms/ldms_sampler.sh.j2') | indent(12) }}
-{% endif %}
-
         - path: /etc/hosts
           append: true
           content: |
 {% for key in ip_name_map | sort %}
             {{ ip_name_map[key] }} {{ key }}
 {% endfor %}
+
         - path: /etc/sysconfig/slurmd
           owner: root:root
           permissions: '0644'
@@ -269,11 +100,6 @@
             echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/slurm  {{ slurm_slurmd_log_dir_effective }}   nfs defaults,_netdev 0 0" >> /etc/fstab
             echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/spool/slurmd      {{ slurm_slurmd_spool_dir_effective }}       nfs defaults,_netdev 0 0" >> /etc/fstab
             echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/slurm/epilog.d     /etc/slurm/epilog.d      nfs defaults,_netdev 0 0" >> /etc/fstab
-            echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/munge      /etc/munge       nfs defaults,_netdev 0 0" >> /etc/fstab
-            echo "{{ trackfile_nfs_path }}    /var/log/track       nfs defaults,_netdev 0 0" >> /etc/fstab
-            echo "{{ cloud_init_nfs_path}}/hpc_tools/container_images  /hpc_tools/container_images   nfs defaults,_netdev 0 0" >> /etc/fstab
-            echo "{{ cloud_init_nfs_path}}/hpc_tools/scripts  /hpc_tools/scripts   nfs defaults,_netdev 0 0" >> /etc/fstab
-            echo "{{ cloud_init_nfs_path }}/packages  /var/lib/packages   nfs defaults,_netdev 0 0" >> /etc/fstab
             echo "{{ cloud_init_nfs_path }}/ssh {{ client_mount_path }}/slurm/ssh nfs defaults,_netdev 0 0" >> /etc/fstab
             echo "{{ cloud_init_slurm_nfs_path }} {{ client_mount_path }} nfs defaults,_netdev 0 0" >> /etc/fstab
             chmod {{ file_mode }} /etc/fstab
@@ -293,9 +119,6 @@
             exec > >(tee -a "$LOGFILE") 2>&1
 
             echo "[INFO] ===== Starting slurmd setup (service file, directories, epilog) ====="
-
-            bash /usr/local/bin/check_slurm_controller_status.sh
-
             echo "[INFO] Setting ownership for Slurm directories"
             chown -R {{ slurm_user }}:{{ slurm_user }} {{ slurm_slurmd_log_dir_effective }}
             chown -R {{ slurm_user }}:{{ slurm_user }} {{ slurm_slurmd_pid_dir_effective }}
@@ -343,23 +166,27 @@
           encoding: b64
           content: {{ slurp_munge_key.content }}
 
-        - path: /usr/local/bin/configure_munge_and_pam.sh
+        - path: /root/omnia_slurm_scripts/00_munge_setup.sh
+          permissions: '0755'
+          content: |        
+            chown -R {{ munge_user }}:{{ munge_group }} /etc/munge
+            chmod 700 /etc/munge
+            chmod {{ file_mode_400 }} /etc/munge/munge.key
+            systemctl enable munge
+            systemctl start munge
+
+        - path: /usr/local/bin/configure_pam.sh
           permissions: '{{ file_mode_755 }}'
           content: |
             #!/bin/bash
-            LOGFILE="/var/log/configure_munge_and_pam.log"
+            LOGFILE="/var/log/configure_pam.log"
             exec > >(tee -a "$LOGFILE") 2>&1
 
-            echo "[INFO] ===== Starting Munge key and PAM configuration ====="
-
-            echo "[INFO] Setting ownership and permissions for Munge key"
-            chown -R {{ munge_user }}:{{ munge_group }} /etc/munge/munge.key
-            chmod {{ file_mode_400 }} /etc/munge/munge.key
-
+            echo "[INFO] ===== Starting  PAM configuration ====="
             echo "[INFO] Updating PAM configuration for pam_slurm_adopt in /etc/pam.d/sshd"
             sed -i '/^password\s\+include\s\+password-auth/i account    required    pam_slurm_adopt.so action_no_jobs=deny' /etc/pam.d/sshd
-
-            echo "[INFO] ===== Completed Munge key and PAM configuration ====="
+            systemctl restart sshd
+            echo "[INFO] ===== Completed PAM configuration ====="
 
             
         - path: /usr/local/bin/configure_firewall_and_services.sh
@@ -445,18 +272,11 @@
             echo "[INFO] Unmounting controller slurm.conf directory from $CTLD_SLURM_DIR_MNT"
             umount "$CTLD_SLURM_DIR_MNT" 2>/dev/null || echo "[WARN] Failed to unmount $CTLD_SLURM_DIR_MNT (may not have been mounted)"
 
-            echo "[INFO] Enabling and starting core services: sshd, munge, slurmd"
+            echo "[INFO] Enabling and starting core services: sshd, slurmd"
             systemctl enable sshd
             systemctl start sshd
-            systemctl enable munge
-            systemctl start munge
             systemctl enable slurmd
             systemctl start slurmd
-            
-            echo "[INFO] Reloading systemd daemon and restarting sshd"
-            systemctl daemon-reexec
-            systemctl restart sshd
-            systemctl restart slurmd
 
             echo "[INFO] ===== Completed firewall and service configuration ====="
 
@@ -465,95 +285,86 @@
           permissions: '{{ file_mode_755 }}'
           content: |
             {{ lookup('template', 'templates/slurm/check_slurm_controller_status.sh.j2') | indent(12) }}
-
-        - path: /tmp/apptainer_mirror.conf
-          permissions: '0644'
-          content: |
-            {{ lookup('template', 'templates/nodes/apptainer_mirror.conf.j2') | indent(12) }}
         
-        - path: /usr/local/bin/configure_ucx_openmpi_env.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/hpc_tools/configure_ucx_openmpi_env.sh.j2') | indent(12) }}
 
-        - path: /usr/local/bin/setup_nvhpc_sdk.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
+        - path: /usr/local/sbin/update_nodename_remote.sh
+          permissions: '0755'
           content: |
-            {{ lookup('template', 'templates/hpc_tools/setup_nvhpc_sdk.sh.j2') | indent(12) }}
+            #!/bin/bash
 
-        - path: /usr/local/bin/export_nvhpc_env.sh
-          owner: root:root
-          permissions: '{{ file_mode_755 }}'
-          content: |
-            {{ lookup('template', 'templates/hpc_tools/export_nvhpc_env.sh.j2') | indent(12) }}
+            # Compute-node wrapper: collects local hardware info via slurmd -C,
+            # then SSHes to the controller to run update_nodename.sh.
+            #
+            # Usage: ./update_nodename_remote.sh <slurmctld_host> [feature_name] [config_file]
+            # Example: ./update_nodename_remote.sh controller normal /etc/slurm/slurm.conf
+            #
+            # Prerequisites:
+            #   - slurmd must be installed on this node
+            #   - update_nodename.sh must exist on the controller (default: /root/)
+            #   - Passwordless SSH from this node to the controller
+
+            set -euo pipefail
+
+            # --- Configuration -----------------------------------------------------------
+            SLURM_CTLD="${1:?Usage: $0 <slurmctld_host> [feature_name] [config_file]}"
+            FEATURE_NAME="${2:-normal}"
+            CONFIG_FILE="${3:-/etc/slurm/slurm.conf}"
+            REMOTE_SCRIPT="/usr/local/sbin/update_nodename.sh"
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes"
+            LOG_PREFIX="[update_nodename]"
+
+            # --- Helpers -----------------------------------------------------------------
+            log()  { echo "${LOG_PREFIX}[$(hostname -s)] $*"; }
+            die()  { log "ERROR: $*" >&2; exit 1; }
+
+            # --- Gather local node info --------------------------------------------------
+            current_hostname=$(hostname -s)
+            log "Collecting slurmd -C output..."
+
+            slurmd_output=$(slurmd -C 2>/dev/null | head -n 1) \
+                || die "slurmd -C failed -- is slurmd installed?"
+
+            [[ -n "$slurmd_output" ]] || die "slurmd -C returned empty output"
+            [[ "$slurmd_output" == NodeName=* ]] \
+                || die "Unexpected slurmd -C output (missing NodeName=): $slurmd_output"
+
+            # Append Feature tag
+            slurmd_output="${slurmd_output} Feature=${FEATURE_NAME}"
+
+            log "Hostname : $current_hostname"
+            log "NodeLine : $slurmd_output"
+            log "Target   : $SLURM_CTLD:$CONFIG_FILE"
+
+            # --- Call the controller-side script via SSH ---------------------------------
+            # SSH concatenates all args into one string for the remote shell to parse,
+            # which destroys quoting. Use printf %q to shell-escape each argument so the
+            # remote shell reconstructs the original values.
+            log "Invoking ${REMOTE_SCRIPT} on ${SLURM_CTLD}..."
+
+            ssh $SSH_OPTS "$SLURM_CTLD" \
+                "$(printf '%q ' "$REMOTE_SCRIPT" "$current_hostname" "$slurmd_output" "$CONFIG_FILE")"
+
+            log "Done!"
 
       runcmd:
-        - rm -rf /var/lib/cloud/instance
         - /usr/local/bin/set-ssh.sh
-        - /usr/local/bin/install_nvidia_driver.sh
-        # slurm user and group created in the users module
 
         - /usr/local/bin/configure_dirs_and_mounts.sh
         - cp /cert/pulp_webserver.crt /etc/pki/ca-trust/source/anchors && update-ca-trust
         - sed -i 's/^gpgcheck=1/gpgcheck=0/' /etc/dnf/dnf.conf
 
-        - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
+        # Wait for slurmctld service to be up - This waits until the service is active
+        - ['bash', '/usr/local/bin/check_slurm_controller_status.sh']
+        # Configure munge
+        - ['bash', '/root/omnia_slurm_scripts/00_munge_setup.sh']
+        # Update node name on controller
+        - /usr/local/sbin/update_nodename_remote.sh {{ ctld_list[0] }}
+        # Configure slurmd
         - /usr/local/bin/configure_slurmd_setup.sh
-        - /usr/local/bin/configure_munge_and_pam.sh
+        # Configure pam
+        - /usr/local/bin/configure_pam.sh
 
         - setenforce 0
         - /usr/local/bin/configure_firewall_and_services.sh
-
-{% if hostvars['localhost']['openldap_support'] %}
-        - /usr/local/bin/update_ldap_conf.sh
-        - mkdir /ldapcerts
-        - echo "{{ cloud_init_nfs_path_openldap }}/certs                /ldapcerts       nfs defaults,_netdev 0 0" >> /etc/fstab
-        - echo "{{ cloud_init_nfs_path_openldap }}/ldapuser             /home            nfs defaults,_netdev 0 0" >> /etc/fstab
-        - chmod {{ file_mode }} /etc/fstab
-        - mount -a
-        - yes | cp /ldapcerts/* /etc/openldap/certs
-        - umount /ldapcerts
-
-        - firewall-cmd --permanent --add-port={{ ldap_starttls_port }}/tcp
-        - firewall-cmd --permanent --add-port={{ ldap_ssl_port }}/tcp
-        - firewall-cmd --reload
-
-        - setenforce 0
-        - authselect select sssd with-mkhomedir --force
-        - sudo systemctl enable --now oddjobd.service
-        - sudo systemctl enable --now sssd
-        - setsebool -P authlogin_nsswitch_use_ldap on
-        - setsebool -P authlogin_yubikey on
-        - sudo systemctl restart sssd
-        - systemctl restart sshd
-
-{% endif %}
-
-{% if hostvars['localhost']['ucx_support'] or hostvars['localhost']['openmpi_support'] or hostvars['localhost']['ldms_support'] %}
-        # Add NFS entry and mount
-        - mkdir -p {{ client_mount_path }}
-        - echo "{{ cloud_init_slurm_nfs_path }} {{ client_mount_path }} nfs defaults,_netdev 0 0" >> /etc/fstab
-        - mount -a
-        # - echo "One or more shared components (UCX / OpenMPI / LDMS) are enabled."
-        # - /usr/local/bin/configure_ucx_openmpi_env.sh
-
-{% endif %}
-
-{% if hostvars['localhost']['ucx_support'] or hostvars['localhost']['openmpi_support'] %}
-        - echo "One or more shared components (UCX / OpenMPI / LDMS) are enabled."
-        - /usr/local/bin/configure_ucx_openmpi_env.sh
-
-{% endif %}
-
-{% if hostvars['localhost']['ldms_support'] %}
-        - echo " Starting LDMS setup " | tee -a /var/log/ldms-cloudinit.log
-
-        - /root/ldms_sampler.sh
-{% endif %}
-        - /usr/local/bin/setup_nvhpc_sdk.sh
-        - /usr/local/bin/export_nvhpc_env.sh
-        - systemctl restart slurmd
 
         - echo "Cloud-Init has completed successfully."
