@@ -16,8 +16,9 @@
 6. [Usage Examples](#usage-examples)
 7. [Priority Resolution](#priority-resolution)
 8. [Best Practices](#best-practices)
-9. [Validation Rules](#validation-rules)
-10. [Design Decision: storage_config.yml vs storage_profile.yml](#design-decision-storage_configyml-vs-storage_profileyml)
+9. [Multi-Storage System Support](#multi-storage-system-support)
+10. [Validation Rules](#validation-rules)
+11. [Design Decision: storage_config.yml vs storage_profile.yml](#design-decision-storage_configyml-vs-storage_profileyml)
 
 ---
 
@@ -823,6 +824,61 @@ mnt_opts: "defaults,_netdev,noatime,x-systemd.requires=iscsi.service"
 # Additional options for databases
 mnt_opts: "defaults,_netdev,noatime,nobarrier,x-systemd.requires=iscsi.service"
 ```
+
+---
+
+## Multi-Storage System Support
+
+The design is **storage-system and access-method agnostic** by construction. It is a mount model, not a storage-vendor model — it doesn't care what the storage system is, only whether the source is known at boot time (`mounts:`) or runtime-discovered (`powervault_config:` / runcmd).
+
+### Coverage Matrix
+
+| Storage System | Access Method | Mechanism | Profile |
+|---|---|---|---|
+| **PowerVault** | iSCSI/multipath | `powervault_config:` → runcmd (runtime discovery) | `powervault_iscsi` |
+| **VAST** | NFS | `mounts:` + static source | `vast_nfs` / `vast_nfs_performance` |
+| **VAST** | RDMA | `mounts:` + `mount_params` profile with RDMA opts | custom profile |
+| **PowerScale** | NFS | `mounts:` entry — just a different source IP | `powerscale_nfs` (user-defined) |
+| **PowerScale** | SMB/CIFS | `mounts:` with `fs_type: cifs` + cred opts | custom profile |
+| **BeeGFS** | FUSE/RDMA | `mounts:` with BeeGFS client mount | `beegfs` |
+| **Any NFS server** | NFS3/NFS4 | `mounts:` + profile or explicit `fs_type`/`mnt_opts` | `default` / `network_storage` |
+| **S3** | s3fs-fuse | `mounts:` with `fs_type: fuse.s3fs` + cred opts | custom profile |
+| **Local disk** | block device | `mounts:` with UUID/device path | `local_storage` / `scratch_storage` |
+
+### Why This Works
+
+1. **`mounts:` is protocol-agnostic.** `source` is just a string (IP:/path, UUID, device path, s3 bucket). `fs_type` and `mnt_opts` handle the protocol specifics.
+
+2. **`mount_params:` profiles absorb vendor differences.** Each storage+protocol combo is a profile. Users reference the profile name, don't think about options.
+
+3. **`powervault_config:` exists only because iSCSI needs runtime discovery.** Any storage needing runtime device resolution before mount follows the same pattern (runcmd-based). Everything with a known source at config time fits in `mounts:`.
+
+4. **Custom fields in profiles carry vendor-specific variables.** `vast_nfs_ip` in the `vast_nfs` profile demonstrates this. Same pattern works for PowerScale VIPs, BeeGFS mgmtd hosts, etc.
+
+### Adding a New Storage System (Zero Schema Changes)
+
+Example: PowerScale NFS — define a profile and reference it.
+
+```yaml
+mount_params:
+  powerscale_nfs:
+    fs_type: "nfs4"
+    mnt_opts: "nfsvers=4.1,hard,intr,noatime,nconnect=16,rsize=1048576,wsize=1048576"
+    dump_freq: "0"
+    fsck_pass: "0"
+    powerscale_ip: "10.0.1.50"    # Custom field — available to Jinja2 templates
+
+mounts:
+  - name: "powerscale_home"
+    source: "{{ powerscale_ip }}:/ifs/home"
+    mount_point: "/home"
+    mount_params: "powerscale_nfs"
+    functional_group_prefix: ["slurm"]
+```
+
+### When a New Top-Level Section Is Needed
+
+Only when storage requires **runtime device discovery before mount** — where the source path can't be known at boot time. Currently that's just iSCSI/multipath (`powervault_config:`). Everything else (NFS, CIFS, s3fs, BeeGFS, VAST RDMA client) has a known source at config time and fits in `mounts:`.
 
 ---
 

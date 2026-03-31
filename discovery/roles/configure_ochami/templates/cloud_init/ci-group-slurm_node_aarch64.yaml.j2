@@ -321,6 +321,12 @@
 
             echo "[INFO] ===== Completed slurmd setup (aarch64) ====="
 
+        - path: /etc/munge/munge.key
+          owner: {{ munge_user }}:{{ munge_group }}
+          permissions: '{{ file_mode_400 }}'
+          encoding: b64
+          content: {{ slurp_munge_key.content }}
+
         - path: /usr/local/bin/configure_munge_and_pam.sh
           permissions: '{{ file_mode_755 }}'
           content: |
@@ -442,7 +448,7 @@
           content: |
 {% for key in ip_name_map | sort %}
             {{ ip_name_map[key] }} {{ key }}
-{% endfor %}
+{%- endfor %}
 
         - path: /etc/sysconfig/slurmd
           owner: root:root

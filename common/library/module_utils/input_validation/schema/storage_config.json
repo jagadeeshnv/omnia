@@ -5,7 +5,7 @@
     "properties": {
       "powervault_config": {
         "type": "array",
-        "description": "List of PowerVault iSCSI volume connection definitions",
+        "description": "List of PowerVault iSCSI volume connection definitions. Processed via runcmd script because device path is only known after iSCSI login + multipath scan.",
         "items": {
           "type": "object",
           "properties": {
@@ -17,7 +17,7 @@
               "maxLength": 64
             },
             "ip": {
-              "description": "List of target controller IP addresses",
+              "description": "List of target controller IP addresses for iSCSI discovery",
               "type": "array",
               "minItems": 1,
               "items": {
@@ -38,23 +38,102 @@
               "pattern": "^iqn\\.[a-zA-Z0-9.-]+(?::[a-zA-Z0-9._:-]+)?$"
             },
             "volume_id": {
-              "description": "Volume identifier (hex string / WWN)",
+              "description": "Volume identifier (hex string / WWN) for multipath device matching",
               "type": "string",
               "pattern": "^[a-fA-F0-9]+$"
             },
-            "mount": {
-              "description": "Reference to a mounts[] entry by name",
+            "mount_point": {
               "type": "string",
+              "description": "Where the discovered device gets mounted",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "mount_params": {
+              "type": "string",
+              "description": "Named profile for fs_type/mnt_opts (read by the runcmd script)",
               "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "node_key": {
+              "type": "string",
+              "description": "ds.meta_data key for per-node bind mounts (e.g., local_hostname). When present, generates bind mounts under mount_point/<node_key_value>/",
+              "enum": ["local_hostname", "local_ipv4", "instance_id"]
+            },
+            "node_mount_point": {
+              "type": "array",
+              "description": "List of bind mount target paths. Required when node_key is set. Each gets: mount_point/<node_key_value>/<target_stripped_slash> -> <target>",
+              "items": {
+                "type": "string",
+                "pattern": "^/[a-zA-Z0-9/_.-]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of functional group prefixes for node targeting",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
             }
           },
-          "required": ["name", "ip", "iscsi_initiator", "volume_id"],
+          "required": ["name", "ip", "iscsi_initiator", "volume_id", "mount_point", "functional_group_prefix"],
+          "additionalProperties": false
+        }
+      },
+      "beegfs_config": {
+        "type": "array",
+        "description": "List of BeeGFS parallel filesystem mount definitions. BeeGFS uses beegfs-mounts.conf and beegfs-client service, not fstab. Each entry represents one BeeGFS cluster connection.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Unique identifier for this BeeGFS mount",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "mgmtd_host": {
+              "type": "string",
+              "description": "IP address of the BeeGFS management server",
+              "format": "ipv4"
+            },
+            "mount_point": {
+              "type": "string",
+              "description": "Client mount location for this BeeGFS filesystem",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "conn_auth_file": {
+              "type": "string",
+              "description": "Path to the BeeGFS connauth shared secret file on the omnia_core. Copied to /etc/beegfs/ on target nodes.",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "client_conf_overrides": {
+              "type": "object",
+              "description": "Optional key-value overrides for /etc/beegfs/beegfs-client.conf (e.g., tuneNumWorkers, connMaxInternodeNum)",
+              "additionalProperties": {
+                "type": ["string", "integer", "boolean"]
+              }
+            },
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of functional group prefixes for node targeting",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["name", "mgmtd_host", "mount_point", "conn_auth_file", "functional_group_prefix"],
           "additionalProperties": false
         }
       },
       "mounts": {
         "type": "array",
-        "description": "Cloud-init compatible mount configurations",
+        "description": "Cloud-init compatible mount configurations. Source must be known at boot time.",
         "items": {
           "type": "object",
           "properties": {
@@ -67,7 +146,7 @@
             },
             "source": {
               "type": "string",
-              "description": "Device name or network path (e.g., /dev/sdc, UUID=xxx, 192.168.1.100:/export/share)",
+              "description": "Device name or network path (e.g., /dev/sdc, UUID=xxx, 192.168.1.100:/export/share, powervault:<name>)",
               "minLength": 1
             },
             "mount_point": {
@@ -78,7 +157,7 @@
             "fs_type": {
               "type": "string",
               "description": "Filesystem type. Overrides mount_params profile when specified.",
-              "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none"]
+              "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none", "beegfs", "fuse.s3fs"]
             },
             "mnt_opts": {
               "type": "string",
@@ -99,6 +178,21 @@
               "type": "string",
               "description": "Name of the mount_params profile to use for unspecified fields",
               "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "node_key": {
+              "type": "string",
+              "description": "ds.meta_data key for per-node bind mounts. When present, fs_type is forced to none and mnt_opts to bind.",
+              "enum": ["local_hostname", "local_ipv4", "instance_id"]
+            },
+            "node_mount_point": {
+              "type": "array",
+              "description": "List of bind mount target paths. Required when node_key is set.",
+              "items": {
+                "type": "string",
+                "pattern": "^/[a-zA-Z0-9/_.-]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
             },
             "functional_group_prefix": {
               "type": "array",
@@ -129,7 +223,7 @@
               "fs_type": {
                 "type": "string",
                 "description": "Default filesystem type",
-                "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none"]
+                "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none", "beegfs", "fuse.s3fs"]
               },
               "mnt_opts": {
                 "type": "string",
