@@ -1,6 +1,7 @@
 - name: {{ functional_group_name }}
   description: "{{ functional_group_name }}"
-
+  meta_data:
+    meta_data: {{ custom_mounts_perhost | default({}) }}
   file:
     encoding: plain
     content: |
@@ -387,6 +388,18 @@
          - echo "{{ trackfile_nfs_path }}    /var/log/track       nfs defaults,_netdev 0 0" >> /etc/fstab
          - echo "{{ cloud_init_nfs_path }}/ssh {{ client_mount_path }}/slurm/ssh nfs defaults,_netdev 0 0" >> /etc/fstab
          - chmod {{ file_mode }} /etc/fstab
+{% raw %}
+        # Example of using meta-data from vendor_data
+        {%- if ds.meta_data.instance_data.v1.vendor_data.groups.slurm_control_node_x86_64.mounts %}
+        {%- set mymounts = ds.meta_data.instance_data.v1.vendor_data.groups.slurm_control_node_x86_64.mounts %}
+        {%- if ds.meta_data['local-hostname'] in mymounts %}
+        {%- for mount in mymounts[ds.meta_data['local-hostname']] %}
+         - echo "{{ mount }}" >> /root/fstab
+        {%- endfor %}
+        {%- endif %}
+        {%- endif %}
+{% endraw %}
+
          - mount -a
 
          - cp /cert/pulp_webserver.crt /etc/pki/ca-trust/source/anchors && update-ca-trust
