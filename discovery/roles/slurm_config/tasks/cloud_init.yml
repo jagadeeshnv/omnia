@@ -1,0 +1,43 @@
+# Copyright 2025 Dell Inc. or its subsidiaries. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+- name: Merge slurm_config into ALL cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(slurm_config, recursive=True,list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | list }}"
+
+- name: Get the slurm_control_node_x86_64 group
+  ansible.builtin.set_fact:
+    tmp_slurm_control_node_x86_64: "{{ cloud_init_groups_dict['slurm_control_node_x86_64'] }}"
+
+- name: Add powervault to slurm_control_node_x86_64
+  ansible.builtin.set_fact:
+    tmp_slurm_control_node_x86_64: "{{ tmp_slurm_control_node_x86_64 | combine(cloud_init_powervault) }}"
+  when: powervault_config is defined
+
+- name: Merge powervault into slurm_control_node_x86_64
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({'slurm_control_node_x86_64': tmp_slurm_control_node_x86_64}, recursive=True,  list_merge='append') }}"
+  when: powervault_config is defined
+
+- name: Merge the remaining parts if defined
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(_slurm_config.get(item, {}), recursive=True, list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | list }}"
+  when: _slurm_config is defined
+
+- name: Debug cloud_init_groups_dict after slurm_config merge
+  ansible.builtin.debug:
+    var: cloud_init_groups_dict
+  debugger: always

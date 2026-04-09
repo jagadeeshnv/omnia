@@ -31,3 +31,9 @@
   when:
     - slurm_support
     - ctld_list or (cmpt_list or login_list or compiler_login_list)
+
+- name: Invoke cloud init tasks
+  ansible.builtin.include_tasks: cloud_init.yml
+  when:
+    - slurm_support
+    - ctld_list or (cmpt_list or login_list or compiler_login_list)

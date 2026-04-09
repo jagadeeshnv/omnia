@@ -1,0 +1,81 @@
+# Copyright 2025 Dell Inc. or its subsidiaries. All Rights Reserved.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+---
+ssh_key_path: /root/.ssh/oim_rsa.pub
+ssh_private_key_path: /root/.ssh/oim_rsa
+slurm_control_ssh_patterns: "{{ hostvars['oim']['slurm_ssh_patterns'] | default('*') }}"
+
+cluster_common:
+  users:
+    - name: root
+      ssh_authorized_keys: "{{ read_ssh_key.stdout }}"
+      lock_passwd: false
+      hashed_passwd: "{{ hashed_password_output.stdout }}"
+  disable_root: false
+  write_files:
+    - path: /usr/local/bin/doca-install.sh
+      owner: root:root
+      permissions: '0755'
+      content: |
+        {{ lookup('template', 'templates/doca-ofed/doca-install.sh.j2') }}
+
+    - path: /usr/local/bin/configure-ib-network.sh
+      owner: root:root
+      permissions: '0755'
+      content: |
+        {{ lookup('template', 'templates/doca-ofed/configure-ib-network.sh.j2') }}
+
+    - path: /usr/local/bin/set-ssh.sh
+      permissions: '0755'
+      content: |
+        timedatectl set-timezone {{ hostvars['oim']['oim_timezone'] }}
+        sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+        sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+        sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+        systemctl restart sshd
+        default_count=$(ip route | grep -c "^default")
+        if [ "$default_count" -le 1 ]; then
+            echo "Only one or no default route found. No action needed."
+        else
+            private_nic=$(ip route | grep "^default via {{ hostvars['localhost']['admin_nic_ip'] }}" | awk '{print $5}')
+            # Get all default routes
+            ip route | grep '^default' | while read -r line; do
+                nmcli con del "Wired Connection"
+                # Extract NIC name
+                nic=$(echo "$line" | awk '{print $5}')
+
+                # Add the default route to the connection
+                if [ -n "$nic" ]; then
+                    echo "Adding nmcli device $nic"
+                    nmcli con add type ethernet ifname "$nic" con-name "$nic" ipv4.method auto
+                    if [ "$nic" = "$private_nic" ]; then
+                      nmcli con modify "$nic" ipv4.never-default yes
+                      nmcli con delete "cloud-init $nic"
+                    fi
+                    nmcli con up "$nic"
+                else
+                    echo "No connection found for device $nic"
+                fi
+            done
+        fi
+
+    - path: /root/.ssh/config
+      permissions: '0600'
+      content: |
+        Host {{ slurm_control_ssh_patterns }}
+            IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
+            IdentitiesOnly yes
+  runcmd:
+    - /usr/local/bin/set-ssh.sh
+    # TODO: doca-ofed and configure ib should come here, but they have a pulpcert required which is dependent on nfs
