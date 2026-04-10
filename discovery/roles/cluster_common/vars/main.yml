@@ -28,13 +28,13 @@ cluster_common:
       owner: root:root
       permissions: '0755'
       content: |
-        {{ lookup('template', 'templates/doca-ofed/doca-install.sh.j2') }}
+        {{ lookup('template', 'doca-install.sh.j2') }}
 
     - path: /usr/local/bin/configure-ib-network.sh
       owner: root:root
       permissions: '0755'
       content: |
-        {{ lookup('template', 'templates/doca-ofed/configure-ib-network.sh.j2') }}
+        {{ lookup('template', 'configure-ib-network.sh.j2') }}
 
     - path: /usr/local/bin/set-ssh.sh
       permissions: '0755'
@@ -70,12 +70,6 @@ cluster_common:
             done
         fi
 
-    - path: /root/.ssh/config
-      permissions: '0600'
-      content: |
-        Host {{ slurm_control_ssh_patterns }}
-            IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
-            IdentitiesOnly yes
   runcmd:
     - /usr/local/bin/set-ssh.sh
     # TODO: doca-ofed and configure ib should come here, but they have a pulpcert required which is dependent on nfs

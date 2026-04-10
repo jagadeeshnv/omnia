@@ -59,7 +59,6 @@
          - chmod {{ file_mode }} /etc/fstab
          - mount -a
 
-
          - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
 
          - chown -R {{ slurm_user }}:{{ slurm_user }} {{ home_dir }}

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Merge slurm_config into ALL cloud_init_groups_dict
+- name: Merge slurm_config into slurm and login cloud_init_groups_dict
   ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(slurm_config, recursive=True,list_merge='append')) }) }}"
-  loop: "{{ cloud_init_groups_dict.keys() | list }}"
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(slurm_config, recursive=True, list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list + cloud_init_groups_dict.keys() | select('match', '^login') | list }}"
 
 - name: Get the slurm_control_node_x86_64 group
   ansible.builtin.set_fact:
@@ -43,10 +43,10 @@
   loop: "{{ cloud_init_groups_dict.keys() | list }}"
   when: _slurm_config is defined
 
-- name: Merge apptainer when cloud_init_groups_dict starts with slurm
+- name: Merge apptainer when cloud_init_groups_dict starts with slurm or login
   ansible.builtin.set_fact:
     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_apptainer, recursive=True, list_merge='append')) }) }}"
-  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list }}"
+  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list + cloud_init_groups_dict.keys() | select('match', '^login') | list }}"
   when: cloud_init_apptainer is defined
 
 - name: Merge cloud_init_ucx_openmpi into slurm_node
@@ -58,4 +58,4 @@
 - name: Debug cloud_init_groups_dict after slurm_config merge
   ansible.builtin.debug:
     var: cloud_init_groups_dict
-  debugger: always
+  # debugger: always

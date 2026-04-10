@@ -35,3 +35,45 @@ cluster_post:
       - /usr/local/bin/export_nvhpc_env.sh
       - systemctl restart slurmd
       - echo "SLURM_NODE_X86_64_Cloud-Init has completed successfully."
+  login_node_x86_64:
+    runcmd:
+      - systemctl restart slurmd
+      - echo "LOGIN_NODE_X86_64_Cloud-Init has completed successfully."
+  login_node_aarch64:
+    runcmd:
+      - systemctl restart slurmd
+      - echo "LOGIN_NODE_AARCH64_Cloud-Init has completed successfully."
+  login_compiler_node_x86_64:
+    write_files:
+      - path: /usr/local/bin/install_nvhpc_sdk.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'install_nvhpc_sdk.sh.j2') }}
+      - path: /usr/local/bin/configure_nvhpc_env.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'configure_nvhpc_env.sh.j2') }}
+    runcmd:
+      - /usr/local/bin/install_nvhpc_sdk.sh
+      - /usr/local/bin/configure_nvhpc_env.sh
+      - systemctl restart slurmd
+      - echo "LOGIN_COMPILER_NODE_X86_64_Cloud-Init has completed successfully."
+  login_compiler_node_aarch64:
+    write_files:
+      - path: /usr/local/bin/install_nvhpc_sdk.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'install_nvhpc_sdk.sh.j2') }}
+      - path: /usr/local/bin/configure_nvhpc_env.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'configure_nvhpc_env.sh.j2') }}
+    runcmd:
+      - /usr/local/bin/install_nvhpc_sdk.sh
+      - /usr/local/bin/configure_nvhpc_env.sh
+      - systemctl restart slurmd
+      - echo "LOGIN_COMPILER_NODE_AARCH64_Cloud-Init has completed successfully."
