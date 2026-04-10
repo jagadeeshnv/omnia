@@ -17,4 +17,21 @@ cluster_post:
     runcmd:
       - systemctl restart slurmdbd
       - systemctl restart slurmctld
-      - echo "Cloud-Init for slurm_control_node_x86_64 has completed successfully."
+      - echo "SLURM_CONTROL_NODE_X86_64_Cloud-Init has completed successfully."
+  slurm_node_x86_64:
+    write_files:
+      - path: /usr/local/bin/setup_nvhpc_sdk.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'setup_nvhpc_sdk.sh.j2') }}
+      - path: /usr/local/bin/export_nvhpc_env.sh
+        owner: root:root
+        permissions: '0755'
+        content: |
+          {{ lookup('template', 'export_nvhpc_env.sh.j2') }}
+    runcmd:
+      - /usr/local/bin/setup_nvhpc_sdk.sh
+      - /usr/local/bin/export_nvhpc_env.sh
+      - systemctl restart slurmd
+      - echo "SLURM_NODE_X86_64_Cloud-Init has completed successfully."

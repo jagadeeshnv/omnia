@@ -38,6 +38,12 @@
       ansible.builtin.set_fact:
         ldap_default_bind_dn: "cn={{ hostvars['localhost']['openldap_db_username'] }},{{ ldap_search_base }}"
 
+    - name: NFS path for cloud init
+      ansible.builtin.set_fact:
+        cloud_init_nfs_path_openldap: "{{ nfs_server_ip }}:{{ nfs_server_path }}/openldap"
+
+    - name: Invoke cloud-init
+      ansible.builtin.include_tasks: cloud_init.yml
   rescue:
     - name: Warn missing vars files
       ansible.builtin.fail:

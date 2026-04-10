@@ -30,14 +30,14 @@
     content: "{{ cloud_init_groups_dict | to_nice_yaml }}"
     dest: "{{ cloud_init_dir }}/xx_cloud_init_groups_dict.yaml"
     mode: "0644"
-  debugger: always
+  # debugger: always
 
 - name: Write template file
   ansible.builtin.template:
     src: "cloud_init/xx-template.yaml.j2"
     dest: "{{ cloud_init_dir }}/xx-{{ functional_group_name }}.yaml"
     mode: "0644"
-  debugger: always
+  # debugger: always
 
 - name: Load ci group template
   block:
@@ -46,7 +46,7 @@
         src: "cloud_init/ci-group-{{ functional_group_name }}.yaml.j2"
         dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
         mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
-      debugger: always
+      # debugger: always
   rescue:
     - name: Failed to load ci group template
       ansible.builtin.fail:

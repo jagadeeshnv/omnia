@@ -31,11 +31,29 @@
     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({'slurm_control_node_x86_64': tmp_slurm_control_node_x86_64}, recursive=True,  list_merge='append') }}"
   when: powervault_config is defined
 
+- name: Merge cloud_init_nvidia_driver into slurm_node
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_nvidia_driver, recursive=True, list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm_node') | list }}"
+  when: cloud_init_nvidia_driver is defined
+
 - name: Merge the remaining parts if defined
   ansible.builtin.set_fact:
     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(_slurm_config.get(item, {}), recursive=True, list_merge='append')) }) }}"
   loop: "{{ cloud_init_groups_dict.keys() | list }}"
   when: _slurm_config is defined
+
+- name: Merge apptainer when cloud_init_groups_dict starts with slurm
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_apptainer, recursive=True, list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list }}"
+  when: cloud_init_apptainer is defined
+
+- name: Merge cloud_init_ucx_openmpi into slurm_node
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_ucx_openmpi, recursive=True, list_merge='append')) }) }}"
+  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm_node') | list }}"
+  when: cloud_init_ucx_openmpi is defined
 
 - name: Debug cloud_init_groups_dict after slurm_config merge
   ansible.builtin.debug:

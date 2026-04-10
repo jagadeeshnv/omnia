@@ -70,3 +70,8 @@
   ansible.builtin.include_tasks: apply_telemetry_on_upgrade.yml
   when:
     - hostvars['localhost']['upgrade_enabled'] | default(false) | bool
+
+- name: Invoke cloud init ldms tasks
+  ansible.builtin.include_tasks: cloud_init.yml
+  when:
+    - hostvars['localhost']['ldms_support'] | default(false) | bool

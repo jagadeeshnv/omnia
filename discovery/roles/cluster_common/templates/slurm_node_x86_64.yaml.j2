@@ -1,0 +1,28 @@
+- name: {{ functional_group_name }}
+  description: "{{ functional_group_name }}"
+
+  file:
+    encoding: plain
+    content: |
+      ## template: jinja
+      #cloud-config
+      merge_how:
+      - name: list
+        settings: [append]
+      - name: dict
+        settings: [no_replace, recurse_list]
+
+
+      write_files:
+
+
+{% if hostvars['localhost']['ldms_support'] %}
+{% endif %}
+
+
+
+{% if hostvars['localhost']['ucx_support'] or hostvars['localhost']['openmpi_support'] %}
+        - echo "One or more shared components (UCX / OpenMPI / LDMS) are enabled."
+        - /usr/local/bin/configure_ucx_openmpi_env.sh
+{% endif %}
+
