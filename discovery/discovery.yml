@@ -114,6 +114,15 @@
   hosts: oim
   connection: ssh
   tasks:
+    - name: Get functional groups
+      ansible.builtin.set_fact:
+        fg: "{{ hostvars['localhost']['functional_groups'] }}"
+
+    - name: Debug functional groups
+      ansible.builtin.debug:
+        var: fg
+      # debugger: always
+
     - name: Validate OpenLDAP container is running
       ansible.builtin.include_role:
         name: discovery_validations
@@ -150,8 +159,15 @@
         tasks_from: read_nodes_yaml.yml
   roles:
     - nfs_client
+    - cluster_common
     - k8s_config
     - slurm_config
     - openldap
     - telemetry
+    - cluster_post
+
+- name: Configure openchami
+  hosts: oim
+  connection: ssh
+  roles:
     - configure_ochami

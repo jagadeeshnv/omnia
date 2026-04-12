@@ -39,21 +39,25 @@
     mode: "0644"
   # debugger: always
 
-- name: Load ci group template
-  block:
-    - name: Load ci group template - {{ functional_group_name }}
-      ansible.builtin.template:
-        src: "cloud_init/ci-group-{{ functional_group_name }}.yaml.j2"
-        dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
-        mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
-      # debugger: always
-  rescue:
-    - name: Failed to load ci group template
-      ansible.builtin.fail:
-        msg: "{{ ci_group_load_fail_msg }}"
+# - name: Load ci group template
+#   block:
+#     - name: Load ci group template - {{ functional_group_name }}
+#       ansible.builtin.template:
+#         src: "cloud_init/ci-group-{{ functional_group_name }}.yaml.j2"
+#         dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
+#         mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
+#       # debugger: always
+#   rescue:
+#     - name: Failed to load ci group template
+#       ansible.builtin.fail:
+#         msg: "{{ ci_group_load_fail_msg }}"
 
-- name: Set ci group configuration - {{ functional_group_name }}
-  ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml
+# - name: Set ci group configuration - {{ functional_group_name }}
+#   ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml
+#   changed_when: true
+
+- name: Set new style group configuration - {{ functional_group_name }}
+  ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/xx-{{ functional_group_name }}.yaml
   changed_when: true
 
 - name: Verify ci group configuration - {{ functional_group_name }}
