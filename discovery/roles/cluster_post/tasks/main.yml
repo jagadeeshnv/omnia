@@ -14,3 +14,9 @@
 ---
 - name: Invoke cloud init tasks
   ansible.builtin.include_tasks: cloud_init.yml
+
+- name: Save dict to file
+  ansible.builtin.copy:
+    content: "{{ cloud_init_groups_dict | to_nice_yaml }}"
+    dest: "{{ openchami_work_dir }}/cloud-init/all_groups.yml"
+    mode: "0644"

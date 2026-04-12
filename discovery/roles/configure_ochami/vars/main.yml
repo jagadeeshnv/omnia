@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+post_scripts:
+  slurm_control_node_x86_64:
+    runcmd:
+      - "echo 'POST script for slurm control node'"
+  slurm_node_x86_64:
+    runcmd:
+      - "echo 'POST script for slurm node'"
+
 
 # Usage: discover_mapping_nodes.yml
 openchami_nodes_template: "{{ role_path }}/templates/nodes/nodes.yaml.j2"
@@ -62,30 +70,6 @@ discovery_completion_msg: |
   by specifying a bmc group in your inventory to initiate the PXE boot process.
   Once the nodes have booted, proceed to run telemetry/telemetry.yml to start collecting telemetry data.
 
-# Usage: ci-group-login_node_x86_64.yaml.j2
-tls_cert_path: "/etc/openldap/certs/ldapserver.crt"
-ldap_conf_dest: "/etc/openldap/ldap.conf"
-sasl_nocanon_regxp: "SASL_NOCANON\ton"
-sasl_nacanon_replace1: "SASL_NOCANON\ton\nBASE\t{{ hostvars['localhost']['ldap_search_base'] }}"
-sasl_nacanon_replace2: "SASL_NOCANON\ton\nURI\tldap://{{ hostvars['localhost']['ldap_server_ip'] }}"
-sasl_nacanon_replace3: "SASL_NOCANON\ton\nTLS_CACERT\t{{ tls_cert_path }}"
-sasl_nacanon_replace4: "SASL_NOCANON\ton\nURI\tldap://{{ hostvars['localhost']['ldap_server_ip'] }}:636"
-file_mode: "0644"
-ldap_starttls_port: 389
-ldap_ssl_port: 636
-
-# Usage: ci-group-slurm_control_node_x86_64.yaml.j2
-home_dir: /var/lib/slurm
-user: slurm
-munge_user: munge
-munge_group: munge
-mysql_user: mysql
-mysql_group: mysql
-file_mode_400: "0400"
-file_mode_755: "0755"
-file_mode_600: "0600"
-ip_timeout: 10
-ip_wait_loop: 60
 
 # Hostname lists for stack-specific SSH configs (populated by passwordless_ssh role)
 k8s_cluster_hostnames: "{{ hostvars['localhost']['k8s_cluster_hostnames'] | default([]) }}"

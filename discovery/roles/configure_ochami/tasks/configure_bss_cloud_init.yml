@@ -101,6 +101,21 @@
 - name: Configure cloud-init group
   ansible.builtin.include_tasks: configure_cloud_init_common.yml
 
+# TODO: Check if data is there before cloud-init upload
+- name: Read cloud init groups dict
+  ansible.builtin.slurp:
+    src: "{{ cloud_init_dir }}/all_groups.yml"
+  register: cloud_init_groups_dict_file
+  changed_when: false
+
+- name: Parse cloud init groups dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict_file.content | b64decode | from_yaml }}"
+
+- name: Merge post scripts
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine(post_scripts, recursive=True, list_merge='append') }}"
+
 - name: Include configure cloud init
   ansible.builtin.include_tasks: configure_cloud_init_group.yml
   with_items: "{{ hostvars['localhost']['functional_groups'] | map(attribute='name') | list }}"
