@@ -392,7 +392,7 @@ _slurm_config: # specific cloud_init functional groups
       - systemctl enable sshd
       - systemctl start sshd
 
-  slurm_node_x86_64:
+  slurm_node_aarch64: &slurm_node
     runcmd:
       - /usr/local/bin/configure_dirs_and_mounts.sh
       - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
@@ -615,7 +615,9 @@ _slurm_config: # specific cloud_init functional groups
 
           echo "[INFO] ===== Completed firewall and service configuration ====="
 
-  login_node_x86_64: &login_node_common
+  slurm_node_x86_64: *slurm_node
+
+  login_node_aarch64: &login_node
     runcmd:
       - /usr/local/bin/configure_dirs_and_mounts.sh
       - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
@@ -769,7 +771,7 @@ _slurm_config: # specific cloud_init functional groups
 
           echo "[INFO] ===== Completed firewall and service configuration ====="
 
-  login_node_aarch64: *login_node_common
+  login_node_x86_64: *login_node
 
   login_compiler_node_x86_64:
     runcmd:

@@ -28,29 +28,27 @@
 - name: Write template file
   ansible.builtin.template:
     src: "cloud_init/group-template.yaml.j2"
-    dest: "{{ cloud_init_dir }}/group-{{ functional_group_name }}.yaml"
+    dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
     mode: "0644"
+  when: not functional_group_name.startswith("service_kube_")
   # debugger: always
 
-# - name: Load ci group template
-#   block:
-#     - name: Load ci group template - {{ functional_group_name }}
-#       ansible.builtin.template:
-#         src: "cloud_init/ci-group-{{ functional_group_name }}.yaml.j2"
-#         dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
-#         mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
-#       # debugger: always
-#   rescue:
-#     - name: Failed to load ci group template
-#       ansible.builtin.fail:
-#         msg: "{{ ci_group_load_fail_msg }}"
+- name: Load ci group template when functional_group_name starts with "service_kube_"
+  when: functional_group_name.startswith("service_kube_")
+  block:
+    - name: Load ci group template - {{ functional_group_name }}
+      ansible.builtin.template:
+        src: "cloud_init/ci-group-{{ functional_group_name }}.yaml.j2"
+        dest: "{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml"
+        mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
+      # debugger: always
+  rescue:
+    - name: Failed to load ci group template
+      ansible.builtin.fail:
+        msg: "{{ ci_group_load_fail_msg }}"
 
-# - name: Set ci group configuration - {{ functional_group_name }}
-#   ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml
-#   changed_when: true
-
-- name: Set new style group configuration - {{ functional_group_name }}
-  ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/group-{{ functional_group_name }}.yaml
+- name: Set ci group configuration - {{ functional_group_name }}
+  ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/ci-group-{{ functional_group_name }}.yaml
   changed_when: true
 
 - name: Verify ci group configuration - {{ functional_group_name }}
