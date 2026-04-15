@@ -75,3 +75,5 @@
 - name: Install NFS client with bolt-on support
   ansible.builtin.include_tasks: nfs_client.yml
   with_items: "{{ storage_to_be_mounted }}"
+  tags:
+    - nfs_setup

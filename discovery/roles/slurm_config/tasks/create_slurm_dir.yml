@@ -67,6 +67,8 @@
 - name: Configure openldap if supported
   ansible.builtin.include_tasks: openldap_config.yml
   when: hostvars['localhost']['openldap_support']
+  tags:
+    - nfs_setup
 
 - name: Create slurm group
   ansible.builtin.group:
@@ -100,6 +102,8 @@
   failed_when: false
   when:
     - clear_slurm_files
+  tags:
+    - nfs_setup
 
 - name: Create the slurm directory in share
   ansible.builtin.file:
@@ -108,6 +112,8 @@
     owner: root
     group: root
     mode: "{{ common_mode }}"
+  tags:
+    - nfs_setup
 
 # This directory is created to store the controller track file in NFS
 # The track file is generated only after the Slurm controller has been fully configured in a fresh deployment
@@ -118,6 +124,8 @@
     owner: root
     group: root
     mode: "{{ common_mode }}"
+  tags:
+    - nfs_setup
 
 - name: Create all common directories
   ansible.builtin.include_tasks: exist_dir.yml
@@ -128,6 +136,8 @@
     - "{{ (cmpt_list + login_list + compiler_login_list) | product(cmpt_dir) }}"
   loop_control:
     loop_var: product
+  tags:
+    - nfs_setup
 
 - name: Create the cert directory on share
   ansible.builtin.file:
@@ -136,6 +146,8 @@
     owner: root
     group: root
     mode: "{{ common_mode }}"
+  tags:
+    - nfs_setup
 
 - name: Copy pulp webserver certificate to client_share_path
   ansible.builtin.copy:
@@ -143,20 +155,28 @@
     dest: "{{ slurm_config_path }}/cert"
     mode: "{{ file_mode }}"
   become: true
+  tags:
+    - nfs_setup
 
 - name: Create hpc tools dirs
   ansible.builtin.include_tasks: hpc_tools.yml
+  tags:
+    - nfs_setup
 
 - name: Check if munge key exists top level
   ansible.builtin.stat:
     path: "{{ slurm_config_path }}/munge.key"
   register: munge_present
+  tags:
+    - nfs_setup
 
 - name: Ensure munge key is generated
   ansible.builtin.shell: "{{ munge_key_cmd }} > {{ slurm_config_path }}/munge.key"
   when: not munge_present.stat.exists
   register: munge_gen
   changed_when: munge_gen.rc == 0
+  tags:
+    - nfs_setup
 
 - name: Distribute the munge key
   ansible.builtin.copy:
@@ -169,6 +189,8 @@
             (cmpt_list | default([])) +
             (compiler_login_list | default([])) +
             (login_list | default([])) }}"
+  tags:
+    - nfs_setup
 
 - name: Conf merge and write using slurm_conf module
   ansible.builtin.include_tasks: confs.yml
@@ -182,6 +204,8 @@
     mode: "{{ conf_file_mode }}"
   when: ctld_list
   loop: "{{ ctld_list }}"
+  tags:
+    - nfs_setup
 
 - name: Generate slurmd opts for Configless
   ansible.builtin.set_fact:
@@ -196,6 +220,8 @@
     mode: "{{ common_mode }}"
   when: cmpt_list
   loop: "{{ cmpt_list | product(['logout_user.sh']) }}"
+  tags:
+    - nfs_setup
 
 - name: Get the slurm NFS path
   ansible.builtin.debug:
@@ -222,6 +248,8 @@
     owner: root
     group: root
     mode: '0700'
+  tags:
+    - nfs_setup
 
 - name: Copy OIM private key to Slurm share for node-to-node SSH
   ansible.builtin.copy:
@@ -230,3 +258,5 @@
     owner: root
     group: root
     mode: '0600'
+  tags:
+    - nfs_setup

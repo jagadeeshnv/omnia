@@ -25,8 +25,14 @@
   ansible.builtin.include_tasks: read_slurm_hostnames.yml
   when: slurm_support
 
+# - name: Compute slurm facts needed for cloud-init (always runs)
+#   ansible.builtin.include_tasks: compute_slurm_facts.yml
+#   when:
+#     - slurm_support
+#     - ctld_list or (cmpt_list or login_list or compiler_login_list)
+
 # This does not consider hierarchy of slurm nodes
-- name: Entering the slurm configuration only if slurm in nodes.yaml
+- name: Create slurm dirs and deploy config to NFS
   ansible.builtin.include_tasks: create_slurm_dir.yml
   when:
     - slurm_support

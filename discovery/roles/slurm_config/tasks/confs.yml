@@ -157,6 +157,8 @@
   when: ctld_list
   loop: "{{ ctld_list | product(conf_files | default([])) }}"
   register: ctld_conf_files
+  # WARNING: this will be read from the NFS share if exists if not mounted existing will not be read
+  # so when nfs_setup tag is skipped updated conf from live cluster may/may not be read
 
 - name: Parse configs_input files from localhost (if they are paths)
   slurm_conf:
@@ -368,6 +370,8 @@
   no_log: "{{ _no_log }}"
   when:
     - item.ini_lines
+  tags:
+    - nfs_setup
 
 - name: Add extra confs which are not handled
   ansible.builtin.include_tasks: handle_extra_confs.yml
@@ -380,6 +384,8 @@
 
 - name: Backup Slurm configuration files when changed
   ansible.builtin.include_tasks: backup_conf.yml
+  tags:
+    - nfs_setup
 
 - name: Check if cluster running
   ansible.builtin.include_tasks: check_ctld_running.yml
@@ -389,6 +395,9 @@
   loop: "{{ ctld_list }}"
   loop_control:
     loop_var: ctld
+  tags:
+    - nfs_setup
+  # Checking for cluster running is dependent on changes to conf files
 
 - name: Handle user choice - ABORT
   ansible.builtin.fail:

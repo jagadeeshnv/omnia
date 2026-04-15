@@ -34,9 +34,11 @@
 
     - name: Service cluster prerequisite
       ansible.builtin.include_tasks: telemetry_prereq.yml
+      tags: [nfs_setup]
 
     - name: Generate telemetry deployments
       ansible.builtin.include_tasks: generate_telemetry_deployments.yml
+      tags: [nfs_setup]
 
 - name: Configure of k8s telemetry service
   when:
@@ -47,27 +49,33 @@
 
     - name: Generate service cluster metadata
       ansible.builtin.include_tasks: generate_service_cluster_metadata.yml
+      tags: [nfs_setup]
 
 - name: Include update_ldms_sampler.yml
   ansible.builtin.include_tasks: update_ldms_sampler.yml
+  tags: [nfs_setup]
   when: hostvars['localhost']['ldms_support']
 
 - name: Update ldms agg configuration
   ansible.builtin.include_tasks: update_ldms_agg_config.yml
+  tags: [nfs_setup]
   when: hostvars['localhost']['ldms_support']
 
 - name: Check if PXE mapping has changed since last run
   ansible.builtin.include_tasks: check_pxe_changes.yml
+  tags: [nfs_setup]
   when: hostvars['localhost']['ldms_support']
 
 - name: Restart LDMS configs for node addition and deletion
   ansible.builtin.include_tasks: restart_ldms_configs.yml
+  tags: [nfs_setup]
   when:
     - hostvars['localhost']['ldms_support']
     - pxe_changed | default(false) | bool
 
 - name: Apply telemetry configurations on upgrade
   ansible.builtin.include_tasks: apply_telemetry_on_upgrade.yml
+  tags: [nfs_setup]
   when:
     - hostvars['localhost']['upgrade_enabled'] | default(false) | bool
 
