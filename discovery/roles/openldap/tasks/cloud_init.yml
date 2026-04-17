@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Merge cloud_init_openldap to cloud_init_groups_dict slurm and login prefixed groups
+- name: Create openldap group in cloud_init_groups_dict
   ansible.builtin.set_fact:
     cloud_init_groups_dict: >-
-      {{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_openldap, recursive=True, list_merge='append')) }) }}
-  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list + cloud_init_groups_dict.keys() | select('match', '^login') | list }}"
+      {{ cloud_init_groups_dict | combine({ 'openldap': cloud_init_openldap }, recursive=True, list_merge='append') }}
 
 - name: Debug cloud_init_groups_dict after cloud_init_openldap merge
   ansible.builtin.debug:

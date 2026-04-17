@@ -108,6 +108,32 @@
   register: cloud_init_groups_dict_file
   changed_when: false
 
+# - name: Read cloud init munge file
+#   ansible.builtin.slurp:
+#     src: "{{ cloud_init_dir }}/fragments/munge.yaml"
+#   register: cloud_init_munge_file
+#   changed_when: false
+
+# - name: Read the munge data
+#   ansible.builtin.set_fact:
+#     cloud_init_munge_dict: "{{ cloud_init_munge_file.content | b64decode | from_yaml }}"
+
+# - name: Add to dict
+#   ansible.builtin.set_fact:
+#     cloud_init_new_dict: "{{ cloud_init_new_dict | default({}) | combine({'munge': cloud_init_munge_dict}, recursive=True) }}"
+
+# - name: Read cloud init mariadb file
+#   ansible.builtin.slurp:
+#     src: "{{ cloud_init_dir }}/fragments/mariadb.yaml"
+#   register: cloud_init_mariadb_file
+#   changed_when: false
+
+# - name: Read cloud init slurmdbd file
+#   ansible.builtin.slurp:
+#     src: "{{ cloud_init_dir }}/fragments/slurmdbd.yaml"
+#   register: cloud_init_slurmdbd_file
+#   changed_when: false
+
 - name: Parse cloud init groups dict
   ansible.builtin.set_fact:
     cloud_init_groups_dict: "{{ cloud_init_groups_dict_file.content | b64decode | from_yaml }}"
@@ -119,6 +145,13 @@
 - name: Include configure cloud init
   ansible.builtin.include_tasks: configure_cloud_init_group.yml
   with_items: "{{ hostvars['localhost']['functional_groups'] | map(attribute='name') | list }}"
+
+# - name: Write cloud-init template files
+#   ansible.builtin.template:
+#     src: "cloud_init/new_group-template.yaml.j2"
+#     dest: "{{ cloud_init_dir }}/ci-{{ item }}.yaml"
+#     mode: "0644"
+#   with_items: "{{ cloud_init_new_dict.keys() | list }}"
 
 - name: Set openchami SELinux context
   ansible.builtin.command: chcon -R system_u:object_r:container_file_t:s0 "{{ hostvars['localhost']['oim_shared_path'] }}/omnia/openchami"

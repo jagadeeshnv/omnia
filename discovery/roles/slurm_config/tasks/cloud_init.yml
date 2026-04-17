@@ -17,24 +17,14 @@
     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(slurm_config, recursive=True, list_merge='append')) }) }}"
   loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list + cloud_init_groups_dict.keys() | select('match', '^login') | list }}"
 
-- name: Get the slurm_control_node_x86_64 group
+- name: Create separate powervault group in cloud_init_groups_dict
   ansible.builtin.set_fact:
-    tmp_slurm_control_node_x86_64: "{{ cloud_init_groups_dict['slurm_control_node_x86_64'] }}"
-
-- name: Add powervault to slurm_control_node_x86_64
-  ansible.builtin.set_fact:
-    tmp_slurm_control_node_x86_64: "{{ tmp_slurm_control_node_x86_64 | combine(cloud_init_powervault) }}"
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'powervault': cloud_init_powervault }, recursive=True, list_merge='append') }}"
   when: powervault_config is defined
 
-- name: Merge powervault into slurm_control_node_x86_64
+- name: Create separate nvidia_driver group in cloud_init_groups_dict
   ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({'slurm_control_node_x86_64': tmp_slurm_control_node_x86_64}, recursive=True,  list_merge='append') }}"
-  when: powervault_config is defined
-
-- name: Merge cloud_init_nvidia_driver into slurm_node
-  ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_nvidia_driver, recursive=True, list_merge='append')) }) }}"
-  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm_node') | list }}"
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'nvidia_driver': cloud_init_nvidia_driver }, recursive=True, list_merge='append') }}"
   when: cloud_init_nvidia_driver is defined
 
 - name: Merge the remaining parts if defined
@@ -43,19 +33,50 @@
   loop: "{{ cloud_init_groups_dict.keys() | list }}"
   when: _slurm_config is defined
 
-- name: Merge apptainer when cloud_init_groups_dict starts with slurm or login
+- name: Create separate apptainer group in cloud_init_groups_dict
   ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_apptainer, recursive=True, list_merge='append')) }) }}"
-  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm') | list + cloud_init_groups_dict.keys() | select('match', '^login') | list }}"
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'apptainer': cloud_init_apptainer }, recursive=True, list_merge='append') }}"
   when: cloud_init_apptainer is defined
 
-- name: Merge cloud_init_ucx_openmpi into slurm_node
+- name: Create separate ucx_openmpi group in cloud_init_groups_dict
   ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cloud_init_ucx_openmpi, recursive=True, list_merge='append')) }) }}"
-  loop: "{{ cloud_init_groups_dict.keys() | select('match', '^slurm_node') | list }}"
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'ucx_openmpi': cloud_init_ucx_openmpi }, recursive=True, list_merge='append') }}"
   when: cloud_init_ucx_openmpi is defined
 
-- name: Debug cloud_init_groups_dict after slurm_config merge
-  ansible.builtin.debug:
-    var: cloud_init_groups_dict
-  # debugger: always
+- name: Create separate munge group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'munge': cloud_init_munge }) }}"
+  when: cloud_init_munge is defined
+
+- name: Create seperate mariadb group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'mariadb': cloud_init_mariadb }) }}"
+  when: cloud_init_mariadb is defined
+
+- name: Create seperate slurmdbd group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'slurmdbd': cloud_init_slurmdbd }) }}"
+  when: cloud_init_slurmdbd is defined
+
+- name: Create seperate slurmctld group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'slurmctld': cloud_init_slurmctld }) }}"
+  when: cloud_init_slurmctld is defined
+
+- name: Create seperate ctld_track group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'ctld_track': ctld_track}) }}"
+  when: ctld_track is defined
+  
+# - name: Write cloud-init template files
+#   ansible.builtin.template:
+#     src: "group-template.yaml.j2"
+#     dest: "{{ cloud_init_dir }}/{{ item }}.yaml"
+#     mode: "0644"
+#   vars:
+#     group_name: "{{ item }}"
+#   loop:
+#     - munge
+#     - mariadb
+#     - slurmdbd
+#   when: vars['cloud_init_' + item] is defined

@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
+# Munge configuration variables
+munge_user: munge
+munge_group: munge
+slurm_mysql_user: mysql
+slurm_mysql_group: mysql
+
 ctld_list: []
 cmpt_list: []
 login_list: []
@@ -82,6 +88,8 @@ slurm_db_host: "{{ hostvars['localhost']['slurm_db_host'] | default(false) }}"
 slurm_db_port: "{{ hostvars['localhost']['slurm_db_port'] | default(3306) }}"
 slurm_db_type: "{{ hostvars['localhost']['slurm_db_type'] | default('mariadb') }}"
 # share_path: "{{ hostvars['localhost']['share_path'] }}" # TODO: direct load vars omnia_config.yml
+openchami_work_dir: "{{ hostvars['localhost']['oim_shared_path'] }}/omnia/openchami/workdir"
+cloud_init_dir: "{{ openchami_work_dir }}/cloud-init"
 slurm_support: "{{ hostvars['localhost']['slurm_support'] }}"
 slurm_share_prefix: "/"
 slurm_config_dir: etc/slurm
@@ -195,175 +203,11 @@ backup_dir: "{{ slurm_config_path }}/{{ ctld_list[0] }}/etc/slurm/backup_{{ ansi
 _slurm_config: # specific cloud_init functional groups
   slurm_control_node_x86_64:
     write_files:
-      - path: /root/init_slurm_db.sql
-        permissions: '0600'
-        content: |
-          SELECT VERSION();
-          SHOW DATABASES;
-          CREATE DATABASE IF NOT EXISTS {{ apply_config['slurmdbd']['StorageLoc'] }};
-          CREATE USER IF NOT EXISTS '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%' IDENTIFIED BY '{{ hostvars['localhost']['slurm_db_password'] }}';
-          ALTER USER '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%' IDENTIFIED BY '{{ hostvars['localhost']['slurm_db_password'] }}';
-          GRANT ALL PRIVILEGES ON {{ apply_config['slurmdbd']['StorageLoc'] }}.* TO '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%';
-          FLUSH PRIVILEGES;
-
-      - path: /root/omnia_slurm_scripts/00_munge_setup.sh
-        permissions: '0755'
-        content: |
-          chown -R {{ munge_user }}:{{ munge_group }} /etc/munge
-          chmod 0700 /etc/munge
-          chmod 0400 /etc/munge/munge.key
-          systemctl enable munge
-          systemctl start munge
-
-      - path: /root/omnia_slurm_scripts/01_mariadb_setup.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          SLURMDBD_CONF="/etc/slurm/slurmdbd.conf"
-          SLURM_USER="{{ slurm_user }}"
-          SLURM_GROUP="{{ slurm_user }}"
-          # Function to extract value from slurm.conf
-          get_value_slurm_conf() {
-              local key="$1"
-              local default="$2"
-              local value
-              value=$(grep -iE "^\s*$key\s*=" "$SLURMDBD_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
-              echo "${value:-$default}"
-          }
-          chown -R {{ mysql_user }}:{{ mysql_group }} /var/lib/mysql
-          chown -R {{ slurm_user }}:{{ slurm_user }} /var/log/mariadb
-          chown -R {{ slurm_user }}:{{ slurm_user }} /etc/my.cnf.d # Required? why slurm user for my.cnf??
-          chown -R {{ slurm_user }}:{{ slurm_user }} {{ slurm_ctld_log_dir_effective }} {{ slurmdbd_log_dir_effective }}
-          chmod 0755 /etc/my.cnf.d /var/lib/mysql /var/log/mariadb {{ slurm_ctld_log_dir_effective }} {{ slurmdbd_log_dir_effective }}
-
-          #firewall
-          systemctl enable firewalld
-          systemctl start firewalld
-          StoragePort=$(get_value_slurm_conf "StoragePort" "3306")
-          firewall-cmd --permanent --add-port="$StoragePort"/tcp
-          firewall-cmd --reload
-          systemctl enable --now mariadb
-          systemctl start mariadb
-          mysql -u root < /root/init_slurm_db.sql
-
-      - path: /root/omnia_slurm_scripts/02_slurmdbd_setup.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          SLURMDBD_CONF="/etc/slurm/slurmdbd.conf"
-          SLURM_USER="{{ slurm_user }}"
-          SLURM_GROUP="{{ slurm_user }}"
-          # Function to extract value from slurm.conf
-          get_value_slurm_conf() {
-              local key="$1"
-              local default="$2"
-              local value
-              value=$(grep -iE "^\s*$key\s*=" "$SLURMDBD_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
-              echo "${value:-$default}"
-          }
-          chmod 0600 /etc/slurm/slurmdbd.conf
-          chown {{ slurm_user }}:{{ slurm_user }} /etc/slurm/slurmdbd.conf
-          #file PidFile
-          PidFile=$(get_value_slurm_conf "PidFile" "/var/run/slurmdbd.pid")
-          mkdir -pv $(dirname "$PidFile")
-          touch $PidFile
-          chown -v "$SLURM_USER:$SLURM_GROUP" "$PidFile"
-          chmod -v 0755 $PidFile
-          #file LogFile
-          LogFile=$(get_value_slurm_conf "LogFile" "/var/log/slurmdbd.log")
-          mkdir -pv $(dirname "$LogFile")
-          touch $LogFile
-          chown -v "$SLURM_USER:$SLURM_GROUP" "$LogFile"
-          chmod -v 0755 $LogFile
-          #firewall
-          systemctl enable firewalld
-          systemctl start firewalld
-          DbdPort=$(get_value_slurm_conf "DbdPort" "6819")
-          firewall-cmd --permanent --add-port="$DbdPort"/tcp
-          firewall-cmd --reload
-          systemctl enable slurmdbd
-          systemctl start slurmdbd
-
-      - path: /root/omnia_slurm_scripts/03_slurmctld_setup.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          SLURM_CONF="/etc/slurm/slurm.conf"
-          SLURM_USER="{{ slurm_user }}"
-          SLURM_GROUP="{{ slurm_user }}"
-          # Function to extract value from slurm.conf
-          get_value_slurm_conf() {
-              local key="$1"
-              local default="$2"
-              local value
-              value=$(grep -iE "^\s*$key\s*=" "$SLURM_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
-              echo "${value:-$default}"
-          }
-          #dir StateSaveLocation
-          StateSaveLocation=$(get_value_slurm_conf "StateSaveLocation" "/var/spool/slurmctld")
-          mkdir -pv $StateSaveLocation
-          chown -v "$SLURM_USER:$SLURM_GROUP" $StateSaveLocation
-          chmod -v 0744 $StateSaveLocation
-          #file SlurmctldPidFile
-          SlurmctldPidFile=$(get_value_slurm_conf "SlurmctldPidFile" "/var/run/slurmctld.pid")
-          mkdir -pv $(dirname "$SlurmctldPidFile")
-          touch $SlurmctldPidFile
-          chown -v "$SLURM_USER:$SLURM_GROUP" "$SlurmctldPidFile"
-          chmod -v 0755 $SlurmctldPidFile
-          #file SlurmctldLogFile
-          SlurmctldLogFile=$(get_value_slurm_conf "SlurmctldLogFile" "/var/log/slurmctld.log")
-          mkdir -pv $(dirname "$SlurmctldLogFile")
-          touch $SlurmctldLogFile
-          chown -v "$SLURM_USER:$SLURM_GROUP" "$SlurmctldLogFile"
-          chmod -v 0755 $SlurmctldLogFile
-          #firewall
-          systemctl enable firewalld
-          systemctl start firewalld
-          SlurmctldPort=$(get_value_slurm_conf "SlurmctldPort" "6817")
-          firewall-cmd --permanent --add-port="$SlurmctldPort"/tcp
-          SrunPortRange=$(get_value_slurm_conf "SrunPortRange" "60001-63000")
-          firewall-cmd --permanent --add-port="$SrunPortRange"/tcp
-          firewall-cmd --reload
-          systemctl enable slurmctld
-          systemctl start slurmctld
-          systemctl restart slurmctld
-
-      - path: /root/omnia_slurm_scripts/04_track_file.sh
-        permissions: '0755'
-        content: |
-          #!/bin/bash
-          MARKER="/var/log/track/slurm_controller_track"
-          if [ -f "$MARKER" ]; then
-            echo "Slurm controller track file already exists. Skipping."
-            exit 0
-          fi
-
-          echo "Waiting for slurmctld to become active..."
-          while true; do
-            if systemctl is-active --quiet slurmctld; then
-              echo "Slurm controller is active."
-              touch "$MARKER"
-              exit 0
-            else
-              echo "slurmctld is not active yet. Retrying in 5 seconds."
-            fi
-            sleep 5
-          done
     runcmd:
       - mkdir -p {{ client_mount_path }}/slurm/ssh
       - >-
-        mkdir -p {{ slurm_ctld_log_dir_effective }} {{ slurmdbd_log_dir_effective }}
-        {{ slurm_ctld_pid_dir_effective }} {{ slurmdbd_pid_dir_effective }}
-        {{ slurm_state_save_location_effective }} /etc/slurm {{ home_dir }}
-        /etc/my.cnf.d /etc/munge /var/lib/mysql /var/log/mariadb
-        /var/log/track /var/lib/packages /hpc_tools/container_images /hpc_tools/scripts
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/slurm      /etc/slurm       nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/my.cnf.d   /etc/my.cnf.d    nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/mariadb /var/log/mariadb nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/slurm  {{ slurm_ctld_log_dir_effective }}   nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/slurm  {{ slurmdbd_log_dir_effective }}   nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/munge      /etc/munge       nfs defaults,_netdev 0 0" >> /etc/fstab
-      - echo "{{ trackfile_nfs_path }} /var/log/track nfs defaults,_netdev 0 0" >> /etc/fstab
+        mkdir -p {{ slurm_state_save_location_effective }}  {{ home_dir }}
+        /var/lib/packages /hpc_tools/container_images /hpc_tools/scripts
       - echo "{{ cloud_init_nfs_path }}/hpc_tools/container_images  /hpc_tools/container_images   nfs defaults,_netdev 0 0" >> /etc/fstab
       - echo "{{ cloud_init_nfs_path }}/hpc_tools/scripts  /hpc_tools/scripts   nfs defaults,_netdev 0 0" >> /etc/fstab
       - echo "{{ cloud_init_nfs_path }}/packages  /var/lib/packages   nfs defaults,_netdev 0 0" >> /etc/fstab
@@ -376,15 +220,7 @@ _slurm_config: # specific cloud_init functional groups
       - bash /usr/local/bin/doca-install.sh && bash /usr/local/bin/configure-ib-network.sh
       - chown -R {{ slurm_user }}:{{ slurm_user }} {{ home_dir }}
       - chmod 0755 {{ home_dir }}
-      - chown -R {{ slurm_user }}:{{ slurm_user }} /etc/slurm
-      - chmod 0755 /etc/slurm
-      - chmod {{ file_mode }} /etc/slurm/slurm.conf
       - setenforce 0
-      - ['bash', '/root/omnia_slurm_scripts/00_munge_setup.sh']
-      - ['bash', '/root/omnia_slurm_scripts/01_mariadb_setup.sh']
-      - ['bash', '/root/omnia_slurm_scripts/02_slurmdbd_setup.sh']
-      - ['bash', '/root/omnia_slurm_scripts/03_slurmctld_setup.sh']
-      - ['bash', '/root/omnia_slurm_scripts/04_track_file.sh']
       # TODO: Move this to right place
       - sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
       - firewall-cmd --permanent --add-service=ssh
@@ -498,7 +334,7 @@ _slurm_config: # specific cloud_init functional groups
           chown -R {{ slurm_user }}:{{ slurm_user }} {{ slurm_slurmd_spool_dir_effective }}
 
           echo "[INFO] ===== Completed slurmd setup ====="
-
+#this I 
       - path: /usr/local/bin/configure_munge_and_pam.sh
         permissions: '0755'
         content: |
@@ -1449,6 +1285,203 @@ cloud_init_ucx_openmpi:
     - echo "One or more shared components (UCX / OpenMPI / LDMS) are enabled."
     - /usr/local/bin/configure_ucx_openmpi_env.sh
 
+cloud_init_munge:
+  write_files:
+    - path: /root/omnia_slurm_scripts/00_munge_setup.sh
+      permissions: '0755'
+      content: |
+        chown -R {{ munge_user }}:{{ munge_group }} /etc/munge
+        chmod 0700 /etc/munge
+        chmod 0400 /etc/munge/munge.key
+        systemctl enable munge
+        systemctl start munge
+
+  runcmd:
+    - echo "Munge setup started"
+    - mkdir -p /etc/munge
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/munge      /etc/munge       nfs defaults,_netdev 0 0" >> /etc/fstab
+    - mount -a
+    - ['bash', '/root/omnia_slurm_scripts/00_munge_setup.sh']
+    - echo "Munge setup completed"
+
+cloud_init_mariadb:
+  write_files:
+    - path: /root/init_slurm_db.sql
+      permissions: '0600'
+      content: |
+        SELECT VERSION();
+        SHOW DATABASES;
+        CREATE DATABASE IF NOT EXISTS {{ apply_config['slurmdbd']['StorageLoc'] }};
+        CREATE USER IF NOT EXISTS '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%' IDENTIFIED BY '{{ hostvars['localhost']['slurm_db_password'] }}';
+        ALTER USER '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%' IDENTIFIED BY '{{ hostvars['localhost']['slurm_db_password'] }}';
+        GRANT ALL PRIVILEGES ON {{ apply_config['slurmdbd']['StorageLoc'] }}.* TO '{{ apply_config['slurmdbd']['SlurmUser'] }}'@'%';
+        FLUSH PRIVILEGES;
+
+    - path: /root/omnia_slurm_scripts/01_mariadb_setup.sh
+      permissions: '0755'
+      content: |
+        #!/bin/bash
+        SLURMDBD_CONF="/etc/slurm/slurmdbd.conf"
+        SLURM_USER="{{ slurm_user }}"
+        SLURM_GROUP="{{ slurm_user }}"
+        # Function to extract value from slurm.conf
+        get_value_slurm_conf() {
+          local key="$1"
+          local default="$2"
+          local value
+          value=$(grep -iE "^\s*$key\s*=" "$SLURMDBD_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
+          echo "${value:-$default}"
+        }
+        chown -R {{ slurm_mysql_user }}:{{ slurm_mysql_group }} /var/lib/mysql
+        chown -R {{ slurm_user }}:{{ slurm_user }} /var/log/mariadb
+        chown -R {{ slurm_user }}:{{ slurm_user }} /etc/my.cnf.d # Required? why slurm user for my.cnf??
+        chown -R {{ slurm_user }}:{{ slurm_user }} {{ slurm_ctld_log_dir_effective }} {{ slurmdbd_log_dir_effective }}
+        chmod 0755 /etc/my.cnf.d /var/lib/mysql /var/log/mariadb {{ slurm_ctld_log_dir_effective }} {{ slurmdbd_log_dir_effective }}
+
+        #firewall
+        systemctl enable firewalld
+        systemctl start firewalld
+        StoragePort=$(get_value_slurm_conf "StoragePort" "3306")
+        firewall-cmd --permanent --add-port="$StoragePort"/tcp
+        firewall-cmd --reload
+        systemctl enable --now mariadb
+        systemctl start mariadb
+        mysql -u root < /root/init_slurm_db.sql
+  runcmd:
+    - >-
+      mkdir -p /etc/my.cnf.d /var/lib/mysql /var/log/mariadb
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/my.cnf.d   /etc/my.cnf.d    nfs defaults,_netdev 0 0" >> /etc/fstab
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/mariadb /var/log/mariadb nfs defaults,_netdev 0 0" >> /etc/fstab
+    - mount -a
+    - ['bash', '/root/omnia_slurm_scripts/01_mariadb_setup.sh']
+
+cloud_init_slurmdbd:
+  write_files:
+    - path: /root/omnia_slurm_scripts/02_slurmdbd_setup.sh
+      permissions: '0755'
+      content: |
+        #!/bin/bash
+        SLURMDBD_CONF="/etc/slurm/slurmdbd.conf"
+        SLURM_USER="{{ slurm_user }}"
+        SLURM_GROUP="{{ slurm_user }}"
+        # Function to extract value from slurm.conf
+        get_value_slurm_conf() {
+          local key="$1"
+          local default="$2"
+          local value
+          value=$(grep -iE "^\s*$key\s*=" "$SLURMDBD_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
+          echo "${value:-$default}"
+        }
+        chmod 0600 /etc/slurm/slurmdbd.conf
+        chown {{ slurm_user }}:{{ slurm_user }} /etc/slurm/slurmdbd.conf
+        #file PidFile
+        PidFile=$(get_value_slurm_conf "PidFile" "/var/run/slurmdbd.pid")
+        mkdir -pv $(dirname "$PidFile")
+        touch $PidFile
+        chown -v "$SLURM_USER:$SLURM_GROUP" "$PidFile"
+        chmod -v 0755 $PidFile
+        #file LogFile
+        LogFile=$(get_value_slurm_conf "LogFile" "/var/log/slurmdbd.log")
+        mkdir -pv $(dirname "$LogFile")
+        touch $LogFile
+        chown -v "$SLURM_USER:$SLURM_GROUP" "$LogFile"
+        chmod -v 0755 $LogFile
+        #firewall
+        systemctl enable firewalld
+        systemctl start firewalld
+        DbdPort=$(get_value_slurm_conf "DbdPort" "6819")
+        firewall-cmd --permanent --add-port="$DbdPort"/tcp
+        firewall-cmd --reload
+        systemctl enable slurmdbd
+        systemctl start slurmdbd
+  runcmd:
+    - mkdir -p {{ slurmdbd_log_dir_effective }} {{ slurmdbd_pid_dir_effective }}
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/slurm  {{ slurmdbd_log_dir_effective }}   nfs defaults,_netdev 0 0" >> /etc/fstab
+    - mount -a
+    - ['bash', '/root/omnia_slurm_scripts/02_slurmdbd_setup.sh']
+
+cloud_init_slurmctld:
+  write_files:
+    - path: /root/omnia_slurm_scripts/03_slurmctld_setup.sh
+      permissions: '0755'
+      content: |
+        #!/bin/bash
+        SLURM_CONF="/etc/slurm/slurm.conf"
+        SLURM_USER="{{ slurm_user }}"
+        SLURM_GROUP="{{ slurm_user }}"
+        # Function to extract value from slurm.conf
+        get_value_slurm_conf() {
+          local key="$1"
+          local default="$2"
+          local value
+          value=$(grep -iE "^\s*$key\s*=" "$SLURM_CONF" | sed -E 's/^\s*[^=]+=//; s/#.*//; s/\s+$//')
+          echo "${value:-$default}"
+        }
+        #dir StateSaveLocation
+        StateSaveLocation=$(get_value_slurm_conf "StateSaveLocation" "/var/spool/slurmctld")
+        mkdir -pv $StateSaveLocation
+        chown -v "$SLURM_USER:$SLURM_GROUP" $StateSaveLocation
+        chmod -v 0744 $StateSaveLocation
+        #file SlurmctldPidFile
+        SlurmctldPidFile=$(get_value_slurm_conf "SlurmctldPidFile" "/var/run/slurmctld.pid")
+        mkdir -pv $(dirname "$SlurmctldPidFile")
+        touch $SlurmctldPidFile
+        chown -v "$SLURM_USER:$SLURM_GROUP" "$SlurmctldPidFile"
+        chmod -v 0755 $SlurmctldPidFile
+        #file SlurmctldLogFile
+        SlurmctldLogFile=$(get_value_slurm_conf "SlurmctldLogFile" "/var/log/slurmctld.log")
+        mkdir -pv $(dirname "$SlurmctldLogFile")
+        touch $SlurmctldLogFile
+        chown -v "$SLURM_USER:$SLURM_GROUP" "$SlurmctldLogFile"
+        chmod -v 0755 $SlurmctldLogFile
+        #firewall
+        systemctl enable firewalld
+        systemctl start firewalld
+        SlurmctldPort=$(get_value_slurm_conf "SlurmctldPort" "6817")
+        firewall-cmd --permanent --add-port="$SlurmctldPort"/tcp
+        SrunPortRange=$(get_value_slurm_conf "SrunPortRange" "60001-63000")
+        firewall-cmd --permanent --add-port="$SrunPortRange"/tcp
+        firewall-cmd --reload
+        systemctl enable slurmctld
+        systemctl start slurmctld
+        systemctl restart slurmctld
+  runcmd:
+    - mkdir -p {{ slurm_ctld_log_dir_effective }} {{ slurm_ctld_pid_dir_effective }} /etc/slurm
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/etc/slurm      /etc/slurm       nfs defaults,_netdev 0 0" >> /etc/fstab
+    - echo "{{ cloud_init_nfs_path }}/$(hostname -s)/var/log/slurm  {{ slurm_ctld_log_dir_effective }}   nfs defaults,_netdev 0 0" >> /etc/fstab
+    - mount -a
+    - chown -R {{ slurm_user }}:{{ slurm_user }} /etc/slurm
+    - chmod 0755 /etc/slurm
+    - chmod {{ file_mode }} /etc/slurm/slurm.conf
+    - ['bash', '/root/omnia_slurm_scripts/03_slurmctld_setup.sh']
+
+ctld_track:
+  write_files:
+    - path: /root/omnia_slurm_scripts/04_track_file.sh
+      permissions: '0755'
+      content: |
+        #!/bin/bash
+        MARKER="/var/log/track/slurm_controller_track"
+        if [ -f "$MARKER" ]; then
+            echo "Slurm controller track file already exists. Skipping."
+            exit 0
+        fi
+
+        echo "Waiting for slurmctld to become active..."
+        while true; do
+            if systemctl is-active --quiet slurmctld; then
+                echo "Slurm controller is active."
+                touch "$MARKER"
+                exit 0
+            else
+                echo "slurmctld is not active yet. Retrying in 5 seconds."
+            fi
+            sleep 5
+        done
+  runcmd:
+    - mkdir -p /var/log/track
+    - echo "{{ trackfile_nfs_path }} /var/log/track nfs defaults,_netdev 0 0" >> /etc/fstab
+    - ['bash', '/root/omnia_slurm_scripts/04_track_file.sh']
 slurm_config:
   users:
     - name: "{{ slurm_user }}"

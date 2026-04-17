@@ -87,14 +87,14 @@
     - discovery_mode == 'homogeneous'
     - homogeneous_nodes | length > 0
 
-- name: Process homogeneous groups with user specs (no iDRAC)
-  ansible.builtin.include_tasks: read_node_homogeneous.yml
-  loop: "{{ homogeneous_nodes }}"
-  loop_control:
-    loop_var: item
-  when:
-    - discovery_mode == 'homogeneous'
-    - homogeneous_nodes | length > 0
+# - name: Process homogeneous groups with user specs (no iDRAC)
+#   ansible.builtin.include_tasks: read_node_homogeneous.yml
+#   loop: "{{ homogeneous_nodes }}"
+#   loop_control:
+#     loop_var: item
+#   when:
+#     - discovery_mode == 'homogeneous'
+#     - homogeneous_nodes | length > 0
 
 - name: Build sample iDRAC groups mapping (groups without specs)
   ansible.builtin.set_fact:
@@ -111,27 +111,27 @@
     - name_hardware_group_map | length > 0
     - name_hardware_group_map.get(item, '') not in groups_with_specs
 
-- name: Process homogeneous groups with user specs (no iDRAC)
-  ansible.builtin.include_tasks: read_node_homogeneous.yml
-  loop: "{{ homogeneous_nodes }}"
-  when:
-    - discovery_mode == 'homogeneous'
-    - homogeneous_nodes | length > 0
+# - name: Process homogeneous groups with user specs (no iDRAC)
+#   ansible.builtin.include_tasks: read_node_homogeneous.yml
+#   loop: "{{ homogeneous_nodes }}"
+#   when:
+#     - discovery_mode == 'homogeneous'
+#     - homogeneous_nodes | length > 0
 
-- name: Process homogeneous groups without specs (group iDRAC)
-  ansible.builtin.include_tasks: read_node_idrac_group.yml
-  loop: "{{ sample_idrac_groups | dict2items }}"
-  loop_control:
-    loop_var: group_item
-  when:
-    - discovery_mode == 'homogeneous'
-    - sample_idrac_groups | default({}) | length > 0
+# - name: Process homogeneous groups without specs (group iDRAC)
+#   ansible.builtin.include_tasks: read_node_idrac_group.yml
+#   loop: "{{ sample_idrac_groups | dict2items }}"
+#   loop_control:
+#     loop_var: group_item
+#   when:
+#     - discovery_mode == 'homogeneous'
+#     - sample_idrac_groups | default({}) | length > 0
 
-- name: Process heterogeneous nodes (individual iDRAC)
-  ansible.builtin.include_tasks: read_node_idrac.yml
-  loop: "{{ cmpt_list }}"
-  when:
-    - discovery_mode == 'heterogeneous'
+# - name: Process heterogeneous nodes (individual iDRAC)
+#   ansible.builtin.include_tasks: read_node_idrac.yml
+#   loop: "{{ cmpt_list }}"
+#   when:
+#     - discovery_mode == 'heterogeneous'
 
 - name: DEBUG - Show final node_params before building slurm.conf
   ansible.builtin.debug:

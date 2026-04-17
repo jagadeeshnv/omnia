@@ -1,0 +1,14 @@
+- name: {{ item }}
+  description: "{{ item }}"
+
+  file:
+    encoding: plain
+    content: |
+      ## template: jinja
+      #cloud-config
+      merge_how:
+      - name: list
+        settings: [append]
+      - name: dict
+        settings: [no_replace, recurse_list]
+{{ cloud_init_new_dict[item] | to_nice_yaml(indent=2) | indent(6, first=true) }}
