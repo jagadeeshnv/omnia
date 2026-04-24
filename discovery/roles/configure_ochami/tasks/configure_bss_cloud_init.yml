@@ -138,13 +138,35 @@
   ansible.builtin.set_fact:
     cloud_init_groups_dict: "{{ cloud_init_groups_dict_file.content | b64decode | from_yaml }}"
 
-- name: Merge post scripts
-  ansible.builtin.set_fact:
-    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine(post_scripts, recursive=True, list_merge='append') }}"
+# - name: Merge post scripts
+#   ansible.builtin.set_fact:
+#     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine(post_scripts, recursive=True, list_merge='append') }}"
 
-- name: Include configure cloud init
-  ansible.builtin.include_tasks: configure_cloud_init_group.yml
-  with_items: "{{ hostvars['localhost']['functional_groups'] | map(attribute='name') | list }}"
+- name: Create cloud-init fragments directory
+  ansible.builtin.file:
+    path: "{{ cloud_init_dir }}/fragments"
+    state: directory
+    mode: "{{ hostvars['localhost']['dir_permissions_755'] }}"
+
+- name: Render cloud-init fragments from all_groups
+  ansible.builtin.template:
+    src: "cloud_init/group-template.yaml.j2"
+    dest: "{{ cloud_init_dir }}/fragments/ci-{{ item }}.yaml"
+    mode: "{{ hostvars['localhost']['file_permissions_644'] }}"
+  loop: "{{ functional_group_cloud_init_components['slurm_control_node_x86_64'] }}"
+
+- name: Delete existing cloud-init fragments
+  ansible.builtin.command: /usr/bin/ochami cloud-init group delete --no-confirm -f yaml -d @{{ cloud_init_dir }}/fragments/ci-{{ item }}.yaml
+  loop: "{{ functional_group_cloud_init_components['slurm_control_node_x86_64'] }}"
+  failed_when: false
+
+- name: Set cloud_init fragments
+  ansible.builtin.command: /usr/bin/ochami cloud-init group set -f yaml -d @{{ cloud_init_dir }}/fragments/ci-{{ item }}.yaml
+  loop: "{{ functional_group_cloud_init_components['slurm_control_node_x86_64'] }}"
+
+# - name: Include configure cloud init
+#   ansible.builtin.include_tasks: configure_cloud_init_group.yml
+#   with_items: "{{ hostvars['localhost']['functional_groups'] | map(attribute='name') | list }}"
 
 # - name: Write cloud-init template files
 #   ansible.builtin.template:

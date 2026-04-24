@@ -25,10 +25,10 @@
   vars:
     nodes: "{{ hostvars['localhost']['read_mapping_file']['dict'] | dict2items }}"
 
-- name: Delete the SMD common group - {{ common_group_name }}
-  ansible.builtin.command: /usr/bin/ochami smd group delete --no-confirm {{ common_group_name }}
-  changed_when: true
+# - name: Delete the SMD common group - {{ common_group_name }}
+#   ansible.builtin.command: /usr/bin/ochami smd group delete --no-confirm {{ common_group_name }}
+#   changed_when: true
 
-- name: POST common SMD group
-  ansible.builtin.command: /usr/bin/ochami smd group add -f yaml -d  @{{ nodes_dir }}/groups-common-{{ common_group_name }}.yml
-  changed_when: true
+# - name: POST common SMD group
+#   ansible.builtin.command: /usr/bin/ochami smd group add -f yaml -d  @{{ nodes_dir }}/groups-common-{{ common_group_name }}.yml
+#   changed_when: true

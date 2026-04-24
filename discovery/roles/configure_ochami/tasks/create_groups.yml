@@ -46,3 +46,46 @@
 - name: Check for group updates
   ansible.builtin.include_tasks: update_smd_groups.yaml
   when: functional_group_name in existing_smd_group_names
+  
+- name: Set functional_group_to_xnames
+  ansible.builtin.set_fact:
+    functional_group_to_xnames: "{{ hostvars['localhost']['functional_group_to_xnames'] }}"
+
+- name: Initialize component to XNAMEs mapping
+  ansible.builtin.set_fact:
+    component_to_xnames: {}
+
+- name: Build component to XNAMEs mapping
+  ansible.builtin.include_tasks: build_component_mapping.yml
+  loop: "{{ functional_group_cloud_init_components.keys() | list }}"
+  loop_control:
+    loop_var: functional_group
+    
+- name: Generate component-based SMD groups YAML file
+  ansible.builtin.template:
+    src: "templates/nodes/groups_label.yml.j2"
+    dest: "{{ openchami_work_dir }}/groups_label.yaml"
+    mode: "0644"
+  vars:
+    component_to_xnames: "{{ component_to_xnames }}"
+  when:
+    - component_to_xnames is defined
+
+- name: Delete component SMD groups before recreating in order
+  ansible.builtin.command: /usr/bin/ochami smd group delete --no-confirm {{ item }}
+  changed_when: true
+  failed_when: false
+  run_once: true
+  loop: "{{ component_to_xnames.keys() | list }}"
+  when:
+    - component_to_xnames is defined
+
+- name: Create component SMD groups from generated YAML
+  ansible.builtin.command: /usr/bin/ochami smd group add -f yaml -d @{{ openchami_work_dir }}/groups_label.yaml
+  changed_when: true
+  run_once: true
+  when:
+    - component_to_xnames is defined
+
+
+

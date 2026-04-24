@@ -12,13 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-post_scripts:
+
+
+# Cloud-init components per functional group
+functional_group_cloud_init_components:
   slurm_control_node_x86_64:
-    runcmd:
-      - "echo 'POST script for slurm control node'"
+    - ssh
+    - chrony
+    - slurm_config
+    - munge
+    - mariadb
+    - slurmdbd
+    - slurmctld
+    - openldap
+    - apptainer
   slurm_node_x86_64:
-    runcmd:
-      - "echo 'POST script for slurm node'"
+    - ssh
+    - chrony
+    - slurm_config
+    - apptainer
+    - munge
 
 
 # Usage: discover_mapping_nodes.yml

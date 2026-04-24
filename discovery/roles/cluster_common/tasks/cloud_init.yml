@@ -17,13 +17,21 @@
 # The 'cluster_common' var (from vars/main.yml) provides: users, write_files, runcmd.
 # Jinja expressions inside it (SSH key, password hash, template lookups) are resolved
 # at evaluation time, so the stored values are concrete data — no deferred rendering.
-- name: Merge cluster_common into all cloud_init_groups_dict
-  ansible.builtin.set_fact:
-    cloud_init_groups_dict: >-
-      {{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cluster_common, recursive=True, list_merge='append')) }) }}
-  loop: "{{ cloud_init_groups_dict.keys() | list }}"
+# - name: Merge cluster_common into all cloud_init_groups_dict
+#   ansible.builtin.set_fact:
+#     cloud_init_groups_dict: >-
+#       {{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item] | combine(cluster_common, recursive=True, list_merge='append')) }) }}
+#   loop: "{{ cloud_init_groups_dict.keys() | list }}"
 
-- name: Debug cloud_init_groups_dict after cluster_common merge
-  ansible.builtin.debug:
-    var: cloud_init_groups_dict
-  # debugger: always
+# - name: Debug cloud_init_groups_dict after cluster_common merge
+#   ansible.builtin.debug:
+#     var: cloud_init_groups_dict
+#   # debugger: always
+
+- name: Create ssh component in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'ssh': cloud_init_ssh }, recursive=True, list_merge='append') }}"
+
+- name: Create chrony component in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'chrony': cloud_init_chrony }, recursive=True, list_merge='append') }}"

@@ -1,5 +1,5 @@
-- name: {{ functional_group_name }}
-  description: "{{ functional_group_name }}"
+- name: {{ item }}
+  description: "{{ item }}"
 
   file:
     encoding: plain
@@ -11,4 +11,4 @@
         settings: [append]
       - name: dict
         settings: [no_replace, recurse_list]
-{{ cloud_init_groups_dict[functional_group_name] | to_nice_yaml(indent=2) | indent(6, first=true) }}
+{{ cloud_init_groups_dict[item] | to_nice_yaml(indent=2) | indent(6, first=true) }}

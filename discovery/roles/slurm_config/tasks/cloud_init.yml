@@ -67,6 +67,11 @@
   ansible.builtin.set_fact:
     cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'ctld_track': ctld_track}) }}"
   when: ctld_track is defined
+
+- name: Create seperate slurm_config group in cloud_init_groups_dict
+  ansible.builtin.set_fact:
+    cloud_init_groups_dict: "{{ cloud_init_groups_dict | combine({ 'slurm_config': slurm_config }) }}"
+  when: slurm_config is defined
   
 # - name: Write cloud-init template files
 #   ansible.builtin.template:

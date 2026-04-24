@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-- name: Merge cluster_common into all cloud_init_groups_dict
-  ansible.builtin.set_fact:
-    cloud_init_groups_dict: >-
-      {{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item]
-        | combine(cluster_post[item] | default({}), recursive=True,
-        list_merge='append')) }) }}
-  loop: "{{ cloud_init_groups_dict.keys() | list }}"
+# - name: Merge cluster_common into all cloud_init_groups_dict
+#   ansible.builtin.set_fact:
+#     cloud_init_groups_dict: >-
+#       {{ cloud_init_groups_dict | combine({ item: (cloud_init_groups_dict[item]
+#         | combine(cluster_post[item] | default({}), recursive=True,
+#         list_merge='append')) }) }}
+#   loop: "{{ cloud_init_groups_dict.keys() | list }}"
 
 - name: Debug cloud_init_groups_dict after cluster_post merge
   ansible.builtin.debug:
-    var: cloud_init_groups_dict
-  # debugger: always
+    var: cloud_init_groups_dict.keys()
+  debugger: always

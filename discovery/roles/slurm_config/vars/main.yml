@@ -1489,16 +1489,6 @@ slurm_config:
       system: true
       no_create_home: true
       shell: /sbin/nologin
-  write_files:
-    - path: /etc/hosts
-      append: true
-      content: "{{ ip_name_map | dictsort | map('reverse') | map('join', ' ') | join('\n') }}"
-    - path: /root/.ssh/config
-      permissions: '0600'
-      content: |
-        Host {{ slurm_control_ssh_patterns }}
-            IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
-            IdentitiesOnly yes
   runcmd:
     - mkdir -pv /cert
     - echo "{{ cloud_init_nfs_path }}/cert /cert nfs defaults,_netdev 0 0" >> /etc/fstab

@@ -31,5 +31,5 @@
   register: hashed_password_output
   changed_when: hashed_password_output.rc != 0
 
-- name: Invoke cloud init tasks
+- name: Call cloud init task
   ansible.builtin.include_tasks: cloud_init.yml

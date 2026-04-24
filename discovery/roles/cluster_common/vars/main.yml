@@ -16,30 +16,21 @@ ssh_key_path: /root/.ssh/oim_rsa.pub
 ssh_private_key_path: /root/.ssh/oim_rsa
 slurm_control_ssh_patterns: "{{ hostvars['oim']['slurm_ssh_patterns'] | default('*') }}"
 
-cluster_common:
+# SSH component cloud-init content
+cloud_init_ssh:
+  disable_root: false
   users:
     - name: root
       ssh_authorized_keys: "{{ read_ssh_key.stdout }}"
       lock_passwd: false
       hashed_passwd: "{{ hashed_password_output.stdout }}"
-  disable_root: false
   write_files:
-    - path: /usr/local/bin/doca-install.sh
-      owner: root:root
+    - path: /usr/local/bin/set-ssh-config.sh
       permissions: '0755'
       content: |
-        {{ lookup('template', 'doca-install.sh.j2') }}
-
-    - path: /usr/local/bin/configure-ib-network.sh
-      owner: root:root
-      permissions: '0755'
-      content: |
-        {{ lookup('template', 'configure-ib-network.sh.j2') }}
-
-    - path: /usr/local/bin/set-ssh.sh
-      permissions: '0755'
-      content: |
+        #!/bin/bash
         timedatectl set-timezone {{ hostvars['oim']['oim_timezone'] }}
+        localectl set-locale LANG={{ hostvars['localhost']['language'] }}
         sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
         sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
         sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
@@ -49,13 +40,9 @@ cluster_common:
             echo "Only one or no default route found. No action needed."
         else
             private_nic=$(ip route | grep "^default via {{ hostvars['localhost']['admin_nic_ip'] }}" | awk '{print $5}')
-            # Get all default routes
             ip route | grep '^default' | while read -r line; do
                 nmcli con del "Wired Connection"
-                # Extract NIC name
                 nic=$(echo "$line" | awk '{print $5}')
-
-                # Add the default route to the connection
                 if [ -n "$nic" ]; then
                     echo "Adding nmcli device $nic"
                     nmcli con add type ethernet ifname "$nic" con-name "$nic" ipv4.method auto
@@ -69,7 +56,32 @@ cluster_common:
                 fi
             done
         fi
-
+    - path: /etc/hosts
+      append: true
+      content: "# Host entries will be added by configure_cloud_init_common.yml template"
+    - path: /root/.ssh/config
+      permissions: '0600'
+      content: |
+        Host {{ slurm_control_ssh_patterns }}
+            IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
+            IdentitiesOnly yes
   runcmd:
-    - /usr/local/bin/set-ssh.sh
-    # TODO: doca-ofed and configure ib should come here, but they have a pulpcert required which is dependent on nfs
+    - /usr/local/bin/set-ssh-config.sh
+
+# Chrony component cloud-init content
+cloud_init_chrony:
+  write_files:
+    - path: /etc/chrony.conf
+      permissions: '0644'
+      content: |
+        server {{ cluster_boot_ip }} iburst
+        driftfile /var/lib/chrony/drift
+        rtcsync
+        makestep 1.0 3
+        logdir /var/log/chrony
+        cmdport 0
+  runcmd:
+    - systemctl enable chronyd
+    - systemctl restart chronyd
+    - chronyc sources
+    - chronyc -a makestep

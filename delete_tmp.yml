@@ -1,0 +1,58 @@
+- description: ""
+  label: ssh
+  members:
+    ids:
+        - x1000c0s0b0n0
+        - x1000c0s0b1n0
+        - x1000c0s0b2n0
+        - x1000c0s0b3n0
+- description: ""
+  label: chrony
+  members:
+    ids:
+        - x1000c0s0b0n0
+        - x1000c0s0b1n0
+        - x1000c0s0b2n0
+        - x1000c0s0b3n0
+- description: ""
+  label: hpc_tools
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: ""
+  label: mariadb
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: The slurm_node_x86_64 group
+  label: slurm_node_x86_64
+  members:
+    ids:
+        - x1000c0s0b1n0
+        - x1000c0s0b2n0
+        - x1000c0s0b3n0
+- description: ""
+  label: openldap
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: ""
+  label: munge
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: The slurm_control_node_x86_64 group
+  label: slurm_control_node_x86_64
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: ""
+  label: slurmctld
+  members:
+    ids:
+        - x1000c0s0b0n0
+- description: ""
+  label: slurmdbd
+  members:
+    ids:
+        - x1000c0s0b0n0

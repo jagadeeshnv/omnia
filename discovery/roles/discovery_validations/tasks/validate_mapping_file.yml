@@ -61,6 +61,17 @@
     key: "{{ mapping_file_key }}"
   register: read_mapping_file
 
+- name: Create FUNCTIONAL_GROUP_NAME to XNAMEs mapping
+  ansible.builtin.set_fact:
+    functional_group_to_xnames: >-
+      {{
+        functional_group_to_xnames | default({})
+        | combine({
+          item.value.FUNCTIONAL_GROUP_NAME: (functional_group_to_xnames[item.value.FUNCTIONAL_GROUP_NAME] | default([])) + [item.value.XNAME]
+        })
+      }}
+  loop: "{{ read_mapping_file.dict | dict2items }}"
+
 - name: Initialize count variables
   ansible.builtin.set_fact:
     list_of_hostnames: []

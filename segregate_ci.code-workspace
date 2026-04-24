@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../openchami/workdir"
+		},
+		{
+			"path": "../cloudy"
 		}
 	],
 	"settings": {}
