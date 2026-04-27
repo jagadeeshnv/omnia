@@ -56,17 +56,14 @@ cloud_init_ssh:
                 fi
             done
         fi
-    - path: /etc/hosts
-      append: true
-      content: "# Host entries will be added by configure_cloud_init_common.yml template"
     - path: /root/.ssh/config
       permissions: '0600'
       content: |
-        Host {{ slurm_control_ssh_patterns }}
-            IdentityFile {{ client_mount_path }}/slurm/ssh/oim_rsa
-            IdentitiesOnly yes
+        {{ lookup('template', 'ssh_config.j2') }}
   runcmd:
+    - echo "ssh setup started $(date)" >> /root/ssh.log
     - /usr/local/bin/set-ssh-config.sh
+    - echo " ssh setup completed $(date)" >> /root/ssh.log
 
 # Chrony component cloud-init content
 cloud_init_chrony:
@@ -81,7 +78,9 @@ cloud_init_chrony:
         logdir /var/log/chrony
         cmdport 0
   runcmd:
+    - echo "chrony started $(date)" >> /root/chrony.log
     - systemctl enable chronyd
     - systemctl restart chronyd
     - chronyc sources
     - chronyc -a makestep
+    - echo "chrony completed $(date)" >> /root/chrony.log

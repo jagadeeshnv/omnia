@@ -273,6 +273,7 @@ kube_vip_unreachable_msg: >-
   kubectl rollout restart statefulset nersc-ldms-aggr -n {{ telemetry_namespace }}
   kubectl get pods -n {{ telemetry_namespace }} -l app=nersc-ldms-aggr -w
 
+#LDMS PART
 ldms_pod_ready_msg: "LDMS aggregator pod is ready."
 ldms_pod_not_ready_msg: "WARNING: LDMS aggregator pod did not become ready within 120s."
 ldms_store_pod_ready_msg: "LDMS store daemon pod restarted successfully and is ready"
@@ -287,5 +288,8 @@ cloud_init_ldms:
       content: |
         {{ lookup('template', 'ldms_sampler.sh.j2') }}
   runcmd:
-    - echo " Starting LDMS setup " | tee -a /var/log/ldms-cloudinit.log
+    - echo "=== LDMS Cloud-init starting === $(date)" >> /root/ldms_cloudinit.log
+    - echo " Starting LDMS setup " >> /root/ldms_cloudinit.log
     - /root/ldms_sampler.sh
+    - echo "=== LDMS Cloud-init completed === $(date)" >> /root/ldms_cloudinit.log
+

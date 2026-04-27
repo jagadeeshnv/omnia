@@ -1,0 +1,3 @@
+{% for host_entry in ip_name_map | dictsort %}
+{{ host_entry[1] }} {{ host_entry[0] }}
+{% endfor %}

@@ -25,13 +25,18 @@ functional_group_cloud_init_components:
     - slurmdbd
     - slurmctld
     - openldap
+    - ldms
     - apptainer
   slurm_node_x86_64:
     - ssh
     - chrony
     - slurm_config
-    - apptainer
     - munge
+    - slurmd
+    - pam
+    - openldap
+    - ldms
+    - apptainer
 
 
 # Usage: discover_mapping_nodes.yml

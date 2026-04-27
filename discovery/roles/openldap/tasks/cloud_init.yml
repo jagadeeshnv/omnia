@@ -17,7 +17,3 @@
     cloud_init_groups_dict: >-
       {{ cloud_init_groups_dict | combine({ 'openldap': cloud_init_openldap }, recursive=True, list_merge='append') }}
 
-- name: Debug cloud_init_groups_dict after cloud_init_openldap merge
-  ansible.builtin.debug:
-    var: cloud_init_groups_dict
-  # debugger: always

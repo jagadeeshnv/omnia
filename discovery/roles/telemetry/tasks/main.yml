@@ -73,5 +73,3 @@
 
 - name: Invoke cloud init ldms tasks
   ansible.builtin.include_tasks: cloud_init.yml
-  when:
-    - hostvars['localhost']['ldms_support'] | default(false) | bool
