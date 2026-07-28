@@ -448,7 +448,7 @@
           content: |
 {% for key in ip_name_map | sort %}
             {{ ip_name_map[key] }} {{ key }}
-{% endfor %}
+{%- endfor %}
 
         - path: /etc/sysconfig/slurmd
           owner: root:root

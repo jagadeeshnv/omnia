@@ -3,88 +3,293 @@
     "title": "Configuration Schema",
     "type": "object",
     "properties": {
-      "nfs_client_params": {
+      "powervault_config": {
         "type": "array",
+        "description": "List of PowerVault iSCSI volume connection definitions. Processed via runcmd script because device path is only known after iSCSI login + multipath scan.",
         "items": {
           "type": "object",
           "properties": {
-            "nfs_name": {
+            "name": {
               "type": "string",
-              "description": "The unique NFS server name"
+              "description": "Unique identifier for this PowerVault volume",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
             },
-            "server_ip": {
+            "ip": {
+              "description": "List of target controller IP addresses for iSCSI discovery",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "format": "ipv4"
+              },
+              "uniqueItems": true
+            },
+            "port": {
+              "description": "TCP port for iSCSI target (default 3260)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "iscsi_initiator": {
+              "description": "iSCSI initiator IQN",
               "type": "string",
-              "anyOf": [
-                {
-                  "allOf": [
-                    { "pattern": ".*[A-Za-z].*" },
-                    { "format": "idn-hostname" }
-                  ]
-                },
-                {
-                  "allOf": [
-                    { "pattern": "^[0-9.]+$" },
-                    { "format": "ipv4" }
-                  ]
-                }
-              ]
+              "pattern": "^iqn\\.[a-zA-Z0-9.-]+(?::[a-zA-Z0-9._:-]+)?$"
             },
-            "server_share_path": {
+            "volume_id": {
+              "description": "Volume identifier (hex string / WWN) for multipath device matching",
               "type": "string",
-              "pattern": "^/(?:[^/]+(?:/[^/]+)*)?/?$"
+              "pattern": "^[a-fA-F0-9]+$"
             },
-            "client_share_path": {
+            "mount_point": {
               "type": "string",
-              "pattern": "^/(?:[^/]+(?:/[^/]+)*)?/?$"
+              "description": "Where the discovered device gets mounted",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
             },
-            "client_mount_options": {
-              "type": "string"
+            "mount_params": {
+              "type": "string",
+              "description": "Named profile for fs_type/mnt_opts (read by the runcmd script)",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "node_key": {
+              "type": "string",
+              "description": "ds.meta_data key for per-node bind mounts (e.g., local_hostname). When present, generates bind mounts under mount_point/<node_key_value>/",
+              "enum": ["local_hostname", "local_ipv4", "instance_id"]
+            },
+            "node_mount_point": {
+              "type": "array",
+              "description": "List of bind mount target paths. Required when node_key is set. Each gets: mount_point/<node_key_value>/<target_stripped_slash> -> <target>",
+              "items": {
+                "type": "string",
+                "pattern": "^/[a-zA-Z0-9/_.-]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of functional group prefixes for node targeting",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
             }
           },
-          "required": [
-            "server_ip",
-            "server_share_path",
-            "client_share_path",
-            "client_mount_options"
-          ]
-        },
-        "minItems": 1
+          "required": ["name", "ip", "iscsi_initiator", "volume_id", "mount_point", "functional_group_prefix"],
+          "additionalProperties": false
+        }
       },
-      "powervault_config": {
-        "type": "object",
-        "required": ["ip", "iscsi_initiator", "volume_id"],
-        "properties": {
-          "ip": {
-            "description": "List of target controller IP addresses",
-            "type": "array",
-            "minItems": 1,
-            "items": {
+      "beegfs_config": {
+        "type": "array",
+        "description": "List of BeeGFS parallel filesystem mount definitions. BeeGFS uses beegfs-mounts.conf and beegfs-client service, not fstab. Each entry represents one BeeGFS cluster connection.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
               "type": "string",
+              "description": "Unique identifier for this BeeGFS mount",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "mgmtd_host": {
+              "type": "string",
+              "description": "IP address of the BeeGFS management server",
               "format": "ipv4"
             },
-            "uniqueItems": true
+            "mount_point": {
+              "type": "string",
+              "description": "Client mount location for this BeeGFS filesystem",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "conn_auth_file": {
+              "type": "string",
+              "description": "Path to the BeeGFS connauth shared secret file on the omnia_core. Copied to /etc/beegfs/ on target nodes.",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "client_conf_overrides": {
+              "type": "object",
+              "description": "Optional key-value overrides for /etc/beegfs/beegfs-client.conf (e.g., tuneNumWorkers, connMaxInternodeNum)",
+              "additionalProperties": {
+                "type": ["string", "integer", "boolean"]
+              }
+            },
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of functional group prefixes for node targeting",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
+            }
           },
-
-          "port": {
-            "description": "TCP port for iSCSI (default 3260)",
-            "type": "integer"
+          "required": ["name", "mgmtd_host", "mount_point", "conn_auth_file", "functional_group_prefix"],
+          "additionalProperties": false
+        }
+      },
+      "mounts": {
+        "type": "array",
+        "description": "Cloud-init compatible mount configurations. Source must be known at boot time.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Unique identifier for this mount entry",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "source": {
+              "type": "string",
+              "description": "Device name or network path (e.g., /dev/sdc, UUID=xxx, 192.168.1.100:/export/share, powervault:<name>)",
+              "minLength": 1
+            },
+            "mount_point": {
+              "type": "string",
+              "description": "Mount point path",
+              "pattern": "^/[a-zA-Z0-9/_.-]*$"
+            },
+            "fs_type": {
+              "type": "string",
+              "description": "Filesystem type. Overrides mount_params profile when specified.",
+              "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none", "beegfs", "fuse.s3fs"]
+            },
+            "mnt_opts": {
+              "type": "string",
+              "description": "Mount options. Overrides mount_params profile when specified.",
+              "pattern": "^[a-zA-Z0-9,=._@/-]+$"
+            },
+            "dump_freq": {
+              "type": "string",
+              "description": "Dump frequency (usually 0). Overrides mount_params profile when specified.",
+              "pattern": "^[0-2]$"
+            },
+            "fsck_pass": {
+              "type": "string",
+              "description": "Fsck pass number (usually 0 or 2). Overrides mount_params profile when specified.",
+              "pattern": "^[0-9]$"
+            },
+            "mount_params": {
+              "type": "string",
+              "description": "Name of the mount_params profile to use for unspecified fields",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            },
+            "node_key": {
+              "type": "string",
+              "description": "ds.meta_data key for per-node bind mounts. When present, fs_type is forced to none and mnt_opts to bind.",
+              "enum": ["local_hostname", "local_ipv4", "instance_id"]
+            },
+            "node_mount_point": {
+              "type": "array",
+              "description": "List of bind mount target paths. Required when node_key is set.",
+              "items": {
+                "type": "string",
+                "pattern": "^/[a-zA-Z0-9/_.-]*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of oChaMI functional group prefixes to apply this mount to. Omit to apply to all groups.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
+            },
+            "role": {
+              "type": "string",
+              "description": "Omnia-reserved role for this mount. Used for internal infrastructure mounts.",
+              "enum": ["omnia_slurm_share", "omnia_k8s_share"]
+            }
           },
-
-          "iscsi_initiator": {
-            "description": "iSCSI initiator IQN",
-            "type": "string",
-            "pattern": "^iqn\\.[a-zA-Z0-9.-]+(?::[a-zA-Z0-9._:-]+)?$"
-          },
-
-          "volume_id": {
-            "description": "Volume identifier (hex string)",
-            "type": "string",
-            "pattern": "^[a-fA-F0-9]+$"
+          "required": ["name", "source", "mount_point"],
+          "additionalProperties": false
+        }
+      },
+      "mount_params": {
+        "type": "object",
+        "description": "Named mount parameter profiles. Each profile provides defaults for fs_type, mnt_opts, dump_freq, fsck_pass. Custom fields are allowed for backend-specific metadata.",
+        "patternProperties": {
+          "^[a-zA-Z0-9_-]+$": {
+            "type": "object",
+            "properties": {
+              "fs_type": {
+                "type": "string",
+                "description": "Default filesystem type",
+                "enum": ["auto", "ext2", "ext3", "ext4", "xfs", "btrfs", "nfs", "nfs4", "cifs", "tmpfs", "cephfs", "vfat", "ntfs", "none", "beegfs", "fuse.s3fs"]
+              },
+              "mnt_opts": {
+                "type": "string",
+                "description": "Default mount options",
+                "pattern": "^[a-zA-Z0-9,=._@/-]+$"
+              },
+              "dump_freq": {
+                "type": "string",
+                "description": "Default dump frequency",
+                "pattern": "^[0-2]$"
+              },
+              "fsck_pass": {
+                "type": "string",
+                "description": "Default fsck pass number",
+                "pattern": "^[0-9]$"
+              }
+            },
+            "required": ["fs_type", "mnt_opts"],
+            "additionalProperties": true
           }
+        },
+        "additionalProperties": false
+      },
+      "swap": {
+        "type": "array",
+        "description": "Swap file configurations",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Unique identifier for this swap entry",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "filename": {
+              "type": "string",
+              "description": "Path to the swap file to create",
+              "pattern": "^/[a-zA-Z0-9/_.-]+$"
+            },
+            "size": {
+              "type": "string",
+              "description": "Size in bytes, 'auto', or human-readable format (e.g., 2G, 512M)",
+              "pattern": "^(auto|[0-9]+[BKMGT]?)$"
+            },
+            "maxsize": {
+              "type": "string",
+              "description": "Maximum size (used with size: auto)",
+              "pattern": "^[0-9]+[BKMGT]?$"
+            },
+            "functional_group_prefix": {
+              "type": "array",
+              "description": "List of oChaMI functional group prefixes to apply this swap to. Omit to apply to all groups.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": ["name", "filename", "size"],
+          "additionalProperties": false
         }
       }
     },
-    "required": [
-      "nfs_client_params"
-    ]
+    "required": [],
+    "additionalProperties": false
   }

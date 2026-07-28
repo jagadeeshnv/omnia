@@ -1,0 +1,209 @@
+# ========================================
+# FINAL STORAGE CONFIGURATION
+# ========================================
+# Purpose: Multi-cluster, multi-architecture storage mounting configuration
+# Supports: Pure x86_64, pure aarch64, and hybrid clusters
+# Storage Types: PowerScale (NFS), VAST (NFS/RDMA), PowerVault (iSCSI), External NFS
+ 
+
+ 
+storage_config:
+  # PowerVault Configuration - iSCSI Block Storage
+  powervault_config:
+    default_options: "defaults,_netdev,hard,intr,noatime"
+    # Volume 1 - Control Node Database (100GB)
+    pv1_volume1:
+      ip: ["10.10.0.21", "powervault01.cluster.local"]
+      port: 3260
+      volume_id: "00c0ff4343f1f1f1001c8c4e6901000000"
+      iscsi_initiator: "iqn.2025-01.com.dell:scontrol-node"
+      options: "defaults,_netdev,hard,intr,noatime"
+      filesystem: "xfs"
+
+    # Volume 2 - Control Node Backup (500GB)
+    pv1_volume2:
+      ip: ["10.10.0.21", "powervault01.cluster.local"]
+      port: 3260
+      volume_id: "00c0ff4343f1f1f1001c8c4e6901000001"
+      iscsi_initiator: "iqn.2025-02.com.dell:scontrol-node"
+      filesystem: "xfs"
+      options: "defaults,_netdev,hard,intr,noatime"
+ 
+  # PowerScale Configuration - NFS File Storage
+  powerscale_config:
+    default_options: "defaults,_netdev,hard,intr,noatime"
+    ps1:
+      protocol: "nfs"
+      ips: ["ps.cluster.local"]
+      options: "defaults,_netdev,hard,intr,noatime"
+    ps2:
+      ip: "ps.cluster.local"
+      protocol: "nfs"
+      options: "defaults,_netdev,hard,intr,noatime"
+ 
+  # VAST Configuration - NFS/RDMA Parallel File Storage
+  vast_config:
+    default_options: "proto=rdma,port=20049,nconnect=8,remoteports=dns,mdconnect=2,spread_reads,spread_writes,noidlexprt,forcerdirplus"
+    vast1:
+      protocol: "nfs_rdma"
+      ips: ["vast.cluster.local"]
+      client_share_base_path: "/mnt/vast1"
+      server_share_base_path: "/mnt/share/omnia_vast1"
+      options: "proto=rdma,port=20049,nconnect=8,remoteports=dns,mdconnect=2,spread_reads,spread_writes,noidlexprt,forcerdirplus"
+ 
+  # External NFS Configuration
+  nfs_config:
+    default_options: "defaults,_netdev,soft,intr"
+    nfs1:
+      protocol: "nfs"
+      ips: ["nfs.cluster.local"]
+      client_share_base_path: "/mnt/nfs1"
+      server_share_base_path: "/mnt/share/omnia_nfs1"
+      options: "defaults,_netdev,soft,intr"
+    nfs2:
+      protocol: "nfs"
+      ips: ["nfs.cluster.local"]
+      client_share_base_path: "/mnt/nfs1"
+      server_share_base_path: "/mnt/share/omnia_nfs1"
+      options: "defaults,_netdev,soft,intr"
+
+# ========================================
+# STORAGE PROFILES CONFIGURATION
+# ========================================
+# Reusable mount profiles for different storage types and node roles
+
+storage_profiles:
+  slurm_common_profile:
+  slurm_control_nfs_profile:
+    ps1:
+      "/home": "/home"
+      "/data": "/data"
+      "/backup": "/backup"
+      "/var/slurm": "/slurm"
+      "/etc/slurm": "/etc/slurm"
+      "/var/log/slurm": "/var/log/slurm"
+ 
+  slurm_control_mixed_profile:
+    ps1:
+      "/home": "/home"
+      "/data": "/data"
+      "/backup": "/backup"
+      "/var/slurm": "/slurm"
+      "/etc/slurm": "/etc/slurm"
+      "/var/log/slurm": "/var/log/slurm"
+    vast1:
+      "/opt/aarch64_tools": "/aarch64_tools"
+      "/lib/aarch64": "/lib_aarch64"
+    pv1_volume1: "/var/lib/mysql"
+    pv1_volume2: "/backup/object"
+ 
+  # Slurm Login Node Profile - User Access
+  slurm_login_profile:
+    ps1:
+      "/home": "/home"
+      "/data": "/data"
+      "/shared": "/shared"
+      "/projects": "/projects"
+      "/tools": "/tools"
+      "/tmp": "/tmp"
+ 
+  # Slurm Login/Compiler Node Profile - Development + Compilation
+  slurm_login_compiler_profile:
+    ps1:
+      "/home": "/home"
+      "/data": "/data"
+      "/shared": "/shared"
+      "/projects": "/projects"
+      "/tools": "/tools"
+      "/opt/compiler": "/compiler"
+      "/opt/build": "/build"
+    vast1:
+      "/scratch": "/scratch"
+      "/workspace": "/workspace"
+      "/tmp": "/tmp"
+   
+ 
+  # Slurm Compute Node Profile - HPC Workloads
+  slurm_compute_profile:
+    ps1:
+      "/home": "/home"
+      "/data": "/data"
+      "/opt/apps": "/apps"
+      "/opt/hpc_tools": "/hpc_tools"
+    vast1:
+      "/scratch": "/scratch"
+      "/tmp": "/tmp"
+      "/workspace": "/workspace"
+      "/io-intensive": "/io-intensive"
+   
+  slurm_compute_profile_aarch64:
+    nfs2:
+      "/home": "/home"
+      "/data": "/data"
+      "/opt/apps": "/apps"
+      "/opt/hpc_tools": "/hpc_tools"
+
+  # Kubernetes Worker Node Profile - Container Workloads
+  kube_node_profile:
+    ps2:
+      "/var/lib/containers": "/var/lib/containers"
+      "/var/lib/kubelet": "/var/lib/kubelet"
+      "/var/lib/podman": "/var/lib/podman"
+      "/opt/cni": "/opt/cni"
+ 
+  # Kubernetes Controller Node Profile - Control Plane
+  kube_controller_profile:
+    ps2:
+      "/backup": "/backup"
+      "/etc/kubernetes": "/k8s-config"
+      "/etcd": "/etcd"
+      "/tmp": "/tmp"
+      "/var/lib/etcd": "/var/lib/etcd"
+      "/var/lib/kubelet": "/var/lib/kubelet"
+      "/var/lib/containers": "/var/lib/containers"
+      "/etc/certs": "/etc/certs"
+      "/opt/cni": "/opt/cni"
+ 
+# ========================================
+# SLURM MOUNTS CONFIGURATION
+# ========================================
+
+mounts:
+  slurm_cluster1:
+    # Control Nodes
+    slurm_control_x86_64: slurm_control_nfs_profile
+    slurm_control_aarch64: slurm_control_mixed_profile
+ 
+    # Login Nodes
+    slurm_login_x86_64: 
+    slurm_login_aarch64: slurm_login_profile
+   
+    # Login/Compiler Nodes
+    slurm_login_compiler_x86_64: slurm_login_compiler_profile
+    slurm_login_compiler_aarch64: slurm_login_compiler_profile
+   
+    # Compute Nodes
+    slurm_compute_x86_64: slurm_compute_profile
+    slurm_compute_aarch64:
+      - slurm_compute_profile
+      - slurm_compute_profile_aarch64
+ 
+  k8s_cluster1:
+    # Controller Nodes
+    kube_controller_x86_64: kube_controller_profile
+   
+    # Worker Nodes
+    kube_worker_x86_64: kube_node_profile
+    kube_worker_aarch64: kube_node_profile
+ 
+# ========================================
+# CONFIGURATION NOTES
+# ========================================
+# Multi-storage-support example more that one pv, ps vast etc
+# Multi-Cluster Support
+# Multi-Architecture  
+# Complete Storage Types  
+# Mount Options
+# Path Resolution Logic
+# Volume Management
+# Role Organization
